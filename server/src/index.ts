@@ -15,6 +15,7 @@ import { Logger } from "./logger.ts";
 import { SiteSettings } from "./siteSettings.ts";
 import { AdminAuth, FileCredentialStore } from "./admin/credentials.ts";
 import { adminRouter } from "./admin/routes.ts";
+import { Metrics } from "./metrics.ts";
 
 // Capture console output into the log files before anything else logs.
 const logger = new Logger(dataDir());
@@ -32,6 +33,16 @@ console.log(`data folder: ${dataDir()} (play log, logs, settings, admin login)`)
 const rooms = new RoomRegistry(io, playLog);
 const siteSettings = new SiteSettings(dataDir());
 const credentials = new FileCredentialStore(dataDir());
+// Performance history for the admin debug page (one sample a minute, 7 days).
+const metrics = new Metrics(dataDir(), () => {
+  const live = rooms.list();
+  return {
+    sockets: io.engine.clientsCount,
+    rooms: live.length,
+    singers: live.reduce((n, r) => n + [...r.singers.values()].filter((s) => !s.screen && s.sockets.size > 0).length, 0),
+  };
+});
+metrics.start();
 
 interface SocketData {
   code?: string;
@@ -108,7 +119,7 @@ app.get("/api/info", (_req, res) => {
 });
 
 // Admin area (sign-in, room reports and management, appearance, debug).
-app.use("/api/admin", adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, dataDir: dataDir() }));
+app.use("/api/admin", adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));
 
 app.get("/api/qr", async (req, res) => {
   const url = String(req.query.url ?? "");

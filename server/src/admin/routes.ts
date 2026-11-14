@@ -2,13 +2,14 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Server } from "socket.io";
-import type { AdminRoomReport, AdminSession, AdminStats } from "@karaoke/shared";
+import type { AdminRoomReport, AdminSession, AdminStats, MetricHistory } from "@karaoke/shared";
 import type { Logger } from "../logger.ts";
 import type { PlayLog } from "../playLog.ts";
 import type { Room, RoomRegistry } from "../rooms.ts";
 import { rateLimiter } from "../search.ts";
 import { isTheme, type SiteSettings } from "../siteSettings.ts";
 import { AdminAuth } from "./credentials.ts";
+import type { Metrics } from "../metrics.ts";
 
 /**
  * Everything under /api/admin. Every route except login/session/logout needs a
@@ -35,10 +36,11 @@ export interface AdminDeps {
   auth: AdminAuth;
   settings: SiteSettings;
   logger: Logger;
+  metrics: Metrics;
   dataDir: string;
 }
 
-export function adminRouter({ io, rooms, playLog, auth, settings, logger, dataDir }: AdminDeps): Router {
+export function adminRouter({ io, rooms, playLog, auth, settings, logger, metrics, dataDir }: AdminDeps): Router {
   const router = Router();
   const sessions = new Map<string, Session>();
   const startedAt = Date.now();
@@ -245,6 +247,12 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, dataDi
       dataDir,
       logBytes: await logger.totalBytes(),
     } satisfies AdminStats);
+  });
+
+  // Performance over time: ?hours=1..168 (7 days is all that's kept).
+  router.get("/metrics", (req, res) => {
+    const hours = Math.max(1 / 60, Math.min(168, Number(req.query.hours) || 24));
+    res.json(metrics.query(hours * 3600e3) satisfies MetricHistory);
   });
 
   const limitOf = (req: Request) => Math.max(1, Math.min(2000, Number(req.query.limit) || 300));

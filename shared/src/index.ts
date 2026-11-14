@@ -192,6 +192,27 @@ export interface AdminStats {
   logBytes: number;
 }
 
+/** One bucket of the performance history (averages, except where noted). */
+export interface MetricPoint {
+  at: number;
+  cpu: number; // % of one core
+  cpuMax: number; // highest sample in the bucket
+  rss: number; // bytes
+  heap: number; // bytes
+  sockets: number; // highest in the bucket
+  rooms: number; // highest in the bucket
+  singers: number; // highest in the bucket
+}
+
+export interface MetricHistory {
+  /** Width of one bucket; a gap wider than this means the server was off. */
+  bucketMs: number;
+  from: number;
+  to: number;
+  points: MetricPoint[];
+  systemMemory: number;
+}
+
 export interface LogLine {
   at: number;
   level: "info" | "warn" | "error";
