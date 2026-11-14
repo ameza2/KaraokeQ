@@ -14,6 +14,7 @@ import {
 } from "@karaoke/shared";
 import { useTheme } from "../lib/theme.ts";
 import { api, ApiError, type Run } from "../lib/adminApi.ts";
+import PerfCharts from "../components/PerfCharts.tsx";
 import { useLanHost } from "../lib/joinUrl.ts";
 
 /** Re-run `load` every `ms` while mounted (and once right away). */
@@ -676,6 +677,8 @@ function DebugTab({ run }: { run: Run }) {
           Data folder: <code>{stats.dataDir}</code> (logs are in <code>logs/</code>, never in a database)
         </p>
       )}
+
+      <PerfCharts run={run} />
 
       <div className="admin-head log-head">
         <h2>Logs</h2>
