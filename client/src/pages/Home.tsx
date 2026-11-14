@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { setHostToken } from "../lib/storage.ts";
 import { useLanHost } from "../lib/joinUrl.ts";
 
@@ -66,6 +66,9 @@ export default function Home() {
       </form>
 
       {error && <p className="error">{error}</p>}
+      <Link className="admin-link muted small" to="/admin">
+        Admin
+      </Link>
     </main>
   );
 }

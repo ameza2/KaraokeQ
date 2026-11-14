@@ -4,10 +4,13 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home.tsx";
 import Room from "./pages/Room.tsx";
 import ScreenLanding from "./pages/Screen.tsx";
+import Admin from "./pages/Admin.tsx";
+import { initTheme } from "./lib/theme.ts";
 import { adoptCarriedIdentity, moveOffIpAddress } from "./lib/hostRedirect.ts";
 import "./styles.css";
 
 adoptCarriedIdentity();
+initTheme();
 // On a raw-IP address, hop to the hostname first (YouTube blocks many videos on IP pages).
 void moveOffIpAddress().then((moving) => {
   if (moving) return;
@@ -19,6 +22,7 @@ void moveOffIpAddress().then((moving) => {
           <Route path="/screen" element={<ScreenLanding />} />
           <Route path="/r/:code" element={<Room />} />
           <Route path="/r/:code/screen" element={<Room screenMode />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>

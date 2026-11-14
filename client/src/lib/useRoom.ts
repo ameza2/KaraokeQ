@@ -6,6 +6,7 @@ export interface TimedProgress extends Progress {
 }
 import { connect, type KSocket } from "./socket.ts";
 import { getHostToken, screenDeviceId, setHostToken, singerId } from "./storage.ts";
+import { applyTheme } from "./theme.ts";
 
 export interface Toast extends Notice {
   id: number;
@@ -51,6 +52,10 @@ export function useRoom(code: string, name: string | null, asScreen = false) {
     // made host by the previous host: keep the proof so reloads stay host
     socket.on("host:token", ({ hostToken }) => setHostToken(code, hostToken));
     socket.on("playback:progress", (p) => setProgress({ ...p, at: performance.now() }));
+    // the admin changed the colour preset: switch live
+    socket.on("site:theme", ({ theme }) => applyTheme(theme));
+    // the admin deleted the room: the server hangs up next, and we don't come back
+    socket.on("room:closed", ({ message }) => setError(message));
 
     return () => {
       socket.disconnect();
