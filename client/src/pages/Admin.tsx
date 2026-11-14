@@ -666,7 +666,7 @@ function DebugTab({ run }: { run: Run }) {
           <Stat label="Uptime" value={duration(stats.uptimeSec * 1000)} hint={`since ${dateTime(stats.startedAt)}`} />
           <Stat label="Connections" value={String(stats.sockets)} hint={`${stats.singersOnline} singer${stats.singersOnline === 1 ? "" : "s"} online`} />
           <Stat label="Rooms" value={String(stats.rooms)} hint="live right now" />
-          <Stat label="Log files" value={mb(stats.logBytes)} hint="rotate at 5 MB each" />
+          <Stat label="Log files" value={mb(stats.logBytes)} hint="system: 30 days · rooms: 5 MB each" />
           <Stat label="Runtime" value={`Node ${stats.node.replace(/^v/, "")}`} hint={`${stats.platform} · pid ${stats.pid}`} />
         </div>
       ) : (
