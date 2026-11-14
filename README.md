@@ -36,7 +36,8 @@ The server prints the address to share, for example:
 ```
 karaoke server listening on http://localhost:3001
 sharing as http://192-168-0-231.nip.io (YouTube blocks many videos on raw-IP pages)
-play log: C:\…\karaoke\data
+data folder: C:\…\karaoke\data (play log, logs, settings, admin login)
+admin: no password set yet. Sign in at /admin with Administrator / password; you'll be asked to choose a new one.
 ```
 Open **`http://<that-name>:5173`** on any device, for example `http://192-168-0-231.nip.io:5173`. Opening `http://localhost:5173` also works; the page moves itself to that name automatically (see [Why the address is `…nip.io`](#why-the-address-is-192-168-x-xnipio)).
 
@@ -55,7 +56,7 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 |---|---|---|
 | `PORT` | `3001` | Server port |
 | `KARAOKE_HOST` | auto (`<ip>.nip.io`) | Hostname to share, if your network blocks nip.io/sslip.io (see below) |
-| `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log is written |
+| `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, site settings and the admin login are kept |
 | `API_URL` | `http://localhost:3001` | Dev only: where Vite proxies the API |
 
 On Windows PowerShell: `$env:PORT = "4000"; npm start`.
@@ -139,9 +140,44 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
   - **API:** `GET /api/rooms/<CODE>/plays` returns a live room's full list.
   - **Notes:** a rewound song is logged again when it leaves the stage a second time. `data/` is git-ignored and safe to delete.
 
+### Admin area (`/admin`)
+
+Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of the home page).
+
+**Signing in**
+- **First time:** username `Administrator`, password `password`. You must choose a new password (8 characters or more) before anything else is available.
+- **Storage:** the password is never stored. Only a salted scrypt hash is kept, in `data/admin/credentials.json`.
+- **Forgot the password?** Delete `data/admin/credentials.json` on the server. The login goes back to the default, which must be changed again.
+- **Sessions** last 12 hours and end when the server restarts. Sign-in attempts are limited to 8 per minute per address.
+- **Network:** the admin page works from any device on the LAN. The app uses plain HTTP, so only use it on a Wi-Fi network you trust.
+
+**Rooms tab**
+- Every live room with its **running time**, host, people online, queue length and screen status. Refreshes every 3 seconds.
+- Open a room for the full report:
+  - Created time, last activity and songs played.
+  - Screen address and the room's settings.
+  - Now playing, **users** (online or offline), the **queue**, and the **queue history**: the last 30 songs, with a button to load every song from the play log.
+- **Make host** next to any singer assigns the host role. The new host and the previous host are both told.
+- **+ Add room** creates a room; the first person to join becomes its host.
+- **Delete room** (asks first) disconnects everyone and shows them "This room was closed by the admin". The play log and room log files are kept.
+
+**Appearance tab**
+- Colour presets: **Orange** (default), **Blue**, **White** and **Green**. White is a neutral monochrome look; the interface stays dark.
+- The preset applies to every room and device, switches live on open pages, and is saved in `data/settings.json`.
+
+**Debug tab**
+- **Server:** CPU, memory, system memory, uptime, connections, rooms, log size, Node version and the data folder. Refreshes every 3 seconds.
+- **Logs:** the system log or one room's log (including closed rooms), filtered by level, with a live view.
+- **Log files** are local files only, never a database:
+  - `data/logs/server.log` has every line.
+  - `data/logs/rooms/<CODE>.log` has one room's lines: created, joins, songs queued and played, host changes, settings, screen errors, closed.
+  - Each file rotates to `<name>.1` at 5 MB.
+
+**Account tab:** change the password.
+
 ### Rooms and state
 - **What's in memory:** live rooms (queue, host, settings). Rooms expire after 6 idle hours, and **a server restart clears all live rooms**.
-- **What survives a restart:** only the play log in `data/`.
+- **What survives a restart:** the files in `data/`: the play log, log files, the colour preset and the admin password.
 
 ---
 
@@ -176,20 +212,24 @@ server/   Express + Socket.IO
   src/search.ts           youtubei.js search + suggestions (no API quota), caching, rate limit
   src/net.ts              LAN IP + shareable hostname (nip.io / sslip.io)
   src/playLog.ts          play log (PlayLog interface + JSON-lines file store)
+  src/logger.ts           log files: captures console output; system + per-room logs
+  src/siteSettings.ts     site-wide settings (colour preset)
+  src/admin/              admin login (scrypt credential file) and the /api/admin routes
   src/playback/           PlaybackOutput interface; ScreenOutput (browser screen); LoungeOutput (stub)
 client/   React + Vite
   src/pages/Home.tsx      default landing: start / join
   src/pages/Screen.tsx    screen landing: create / join as the screen
   src/pages/Room.tsx      room page: now playing, controls, queue, menu
   src/pages/Search.tsx    search + autocomplete
+  src/pages/Admin.tsx     admin area: sign-in, rooms, appearance, debug, account
+  src/lib/theme.ts        applies the site colour preset
   src/components/ScreenPlayer.tsx  YouTube player, full screen + controls
-data/     play log files (created at runtime, git-ignored)
+data/     runtime files, git-ignored: rooms/ (play log), logs/, admin/ (login), settings.json
 ```
 
 ## Next steps
 
 Planned work:
-1. Admin area: login, room reports, room management, colour presets and debug logs.
-2. YouTube TV casting.
-3. Refactoring and a test suite.
-4. Source control.
+1. YouTube TV casting.
+2. Refactoring and a test suite.
+3. Source control: a remote and branching conventions.
