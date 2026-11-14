@@ -1963,3 +1963,54 @@ option {
   opacity: 1;
   text-decoration: underline;
 }
+
+/* ---------- colour swatches (room menu) ---------- */
+/* a swatch carries its own data-theme and shows that preset's gradient */
+.swatch {
+  --grad-a: #f2b37a;
+  --grad-b: #e4876b;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  background: linear-gradient(135deg, var(--grad-a), var(--grad-b));
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+  flex: none;
+}
+.swatch[data-theme="blue"] {
+  --grad-a: #7cc0ff;
+  --grad-b: #5b8def;
+}
+.swatch[data-theme="green"] {
+  --grad-a: #86e3a6;
+  --grad-b: #3fb98a;
+}
+.swatch[data-theme="white"] {
+  --grad-a: #ffffff;
+  --grad-b: #c9ced8;
+}
+.swatch.active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg) inset;
+}
+.swatch:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.swatches {
+  display: flex;
+  gap: 0.45rem;
+  flex: none;
+}
+.menu-item.menu-static:hover {
+  background: none;
+}
+@media (max-width: 400px) {
+  .menu-item.menu-static {
+    flex-wrap: wrap;
+  }
+  .menu-item.menu-static .swatches {
+    margin-left: 3.1rem;
+  }
+}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { QueueItem, Singer } from "@karaoke/shared";
+import { THEMES, THEME_LABELS, type QueueItem, type Singer, type ThemeName } from "@karaoke/shared";
 import { useTheme } from "../lib/theme.ts";
 import Scrubber from "../components/Scrubber.tsx";
 import Search from "./Search.tsx";
@@ -248,6 +248,8 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           onToggleOpenControls={() => s.emit("settings:update", { openControls: !state.settings.openControls })}
           fairQueue={state.settings.fairQueue}
           onToggleFairQueue={() => s.emit("settings:update", { fairQueue: !state.settings.fairQueue })}
+          theme={state.settings.theme}
+          onTheme={(theme) => s.emit("settings:update", { theme })}
           playHere={playHere}
           onTogglePlayHere={() => {
             togglePlayHere(!playHere);
@@ -472,6 +474,8 @@ function MenuSheet({
   onToggleOpenControls,
   fairQueue,
   onToggleFairQueue,
+  theme,
+  onTheme,
   playHere,
   onTogglePlayHere,
   onOpen,
@@ -487,6 +491,8 @@ function MenuSheet({
   onToggleOpenControls: () => void;
   fairQueue: boolean;
   onToggleFairQueue: () => void;
+  theme: ThemeName;
+  onTheme: (t: ThemeName) => void;
   playHere: boolean;
   onTogglePlayHere: () => void;
   onOpen: (s: Sheet) => void;
@@ -544,6 +550,28 @@ function MenuSheet({
               </span>
               <span className={`switch${fairQueue ? " on" : ""}`} aria-hidden="true" />
             </button>
+            <div className="menu-item menu-static" role="group" aria-label="Room colour">
+              <span className="menu-icon">🎨</span>
+              <span className="menu-text">
+                Room colour
+                <span className="muted small">{THEME_LABELS[theme]}, on every device in this room</span>
+              </span>
+              <span className="swatches" role="radiogroup" aria-label="Room colour">
+                {THEMES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    role="radio"
+                    aria-checked={theme === t}
+                    aria-label={THEME_LABELS[t]}
+                    title={THEME_LABELS[t]}
+                    className={`swatch${theme === t ? " active" : ""}`}
+                    data-theme={t}
+                    onClick={() => onTheme(t)}
+                  />
+                ))}
+              </span>
+            </div>
           </MenuSection>
         )}
 
