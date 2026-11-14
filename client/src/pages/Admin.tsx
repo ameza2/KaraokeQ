@@ -11,29 +11,8 @@ import {
   type ThemeName,
 } from "@karaoke/shared";
 import { applyTheme } from "../lib/theme.ts";
+import { api, ApiError, type Run } from "../lib/adminApi.ts";
 import { useLanHost } from "../lib/joinUrl.ts";
-
-// ---------- API ----------
-
-class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-
-async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api/admin${path}`, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error ?? "Something went wrong.", res.status);
-  return data as T;
-}
 
 /** Re-run `load` every `ms` while mounted (and once right away). */
 function usePolling(load: () => Promise<void>, ms: number, enabled = true) {
@@ -174,8 +153,6 @@ export default function Admin() {
     </div>
   );
 }
-
-type Run = <T>(action: () => Promise<T>, done?: string) => Promise<T | undefined>;
 
 // ---------- sign-in ----------
 
