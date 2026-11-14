@@ -127,5 +127,72 @@ export interface ServerToClient {
   "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" }) => void;
   /** Sent to a singer who was just made host: their proof for future reconnects. */
   "host:token": (p: { hostToken: string }) => void;
+  /** The admin changed the site-wide colour preset. */
+  "site:theme": (p: { theme: ThemeName }) => void;
+  /** The room was deleted (by the admin). The socket is disconnected right after. */
+  "room:closed": (p: { message: string }) => void;
   notice: (n: Notice) => void;
+}
+
+// ---------- site theme ----------
+
+export const THEMES = ["orange", "blue", "white", "green"] as const;
+export type ThemeName = (typeof THEMES)[number];
+export const THEME_LABELS: Record<ThemeName, string> = { orange: "Orange", blue: "Blue", white: "White", green: "Green" };
+export const DEFAULT_THEME: ThemeName = "orange";
+
+// ---------- admin ----------
+
+export interface AdminSession {
+  authenticated: boolean;
+  username?: string;
+  /** Still on the default password: everything else is locked until it's changed. */
+  mustChangePassword?: boolean;
+}
+
+export interface AdminRoomReport {
+  code: string;
+  id: string;
+  createdAt: number;
+  lastActive: number;
+  /** Total songs that have left the stage (the full play log, not just the last 30). */
+  playCount: number;
+  hostId: string | null;
+  hostName: string | null;
+  screenConnected: boolean;
+  /** Hostname the screen page is open at, when one is connected. */
+  screenHost: string | null;
+  paused: boolean;
+  settings: RoomSettings;
+  nowPlaying: QueueItem | null;
+  queue: QueueItem[];
+  /** Last 30 played, newest first (same list singers see). */
+  history: QueueItem[];
+  singers: Singer[];
+}
+
+export interface AdminStats {
+  now: number;
+  startedAt: number;
+  uptimeSec: number;
+  node: string;
+  platform: string;
+  pid: number;
+  /** Share of one CPU core used by the server since the previous sample (0-100+). */
+  cpuPercent: number;
+  cpuCores: number;
+  memory: { rss: number; heapUsed: number; heapTotal: number; systemTotal: number; systemFree: number };
+  sockets: number;
+  rooms: number;
+  singersOnline: number;
+  dataDir: string;
+  logBytes: number;
+}
+
+export interface LogLine {
+  at: number;
+  level: "info" | "warn" | "error";
+  /** Room code for room-scoped lines. */
+  room?: string;
+  message: string;
 }

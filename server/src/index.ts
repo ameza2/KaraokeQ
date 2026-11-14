@@ -11,6 +11,14 @@ import { FilePlayLog, dataDir } from "./playLog.ts";
 import { getShareHost, lanIps, startShareHostWatch } from "./net.ts";
 import { ScreenOutput } from "./playback/screen.ts";
 import { knownNotEmbeddable, rateLimiter, searchVideos, suggest } from "./search.ts";
+import { Logger } from "./logger.ts";
+import { SiteSettings } from "./siteSettings.ts";
+import { AdminAuth, FileCredentialStore } from "./admin/credentials.ts";
+import { adminRouter } from "./admin/routes.ts";
+
+// Capture console output into the log files before anything else logs.
+const logger = new Logger(dataDir());
+logger.captureConsole();
 
 const PORT = Number(process.env.PORT ?? 3001);
 const app = express();
@@ -20,8 +28,10 @@ app.use(express.json());
 const http = createServer(app);
 const io = new Server<ClientToServer, ServerToClient, {}, SocketData>(http, { cors: { origin: true } });
 const playLog = new FilePlayLog(dataDir());
-console.log(`play log: ${dataDir()}`);
+console.log(`data folder: ${dataDir()} (play log, logs, settings, admin login)`);
 const rooms = new RoomRegistry(io, playLog);
+const siteSettings = new SiteSettings(dataDir());
+const credentials = new FileCredentialStore(dataDir());
 
 interface SocketData {
   code?: string;
@@ -94,8 +104,11 @@ app.get("/api/suggest", async (req, res) => {
 // How other devices should reach us: a hostname when one works (see net.ts), else LAN IPs.
 startShareHostWatch();
 app.get("/api/info", (_req, res) => {
-  res.json({ lanIps: lanIps(), shareHost: getShareHost() });
+  res.json({ lanIps: lanIps(), shareHost: getShareHost(), theme: siteSettings.theme });
 });
+
+// Admin area (sign-in, room reports and management, appearance, debug).
+app.use("/api/admin", adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, dataDir: dataDir() }));
 
 app.get("/api/qr", async (req, res) => {
   const url = String(req.query.url ?? "");
@@ -103,6 +116,9 @@ app.get("/api/qr", async (req, res) => {
   const svg = await QRCode.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
   res.type("image/svg+xml").set("Cache-Control", "public, max-age=86400").send(svg);
 });
+
+// Unknown API paths get JSON, not the web page.
+app.use("/api", (_req, res) => void res.status(404).json({ error: "Not found." }));
 
 // Production: serve the built client.
 const clientDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
@@ -132,6 +148,7 @@ io.on("connection", (socket) => {
 
     socket.data = { code: r.code, singerId: id };
     socket.join([r.channel, r.singerChannel(socket.data.singerId!)]);
+    if (!r.singers.get(id)?.sockets.size) r.say(`${screen ? "screen device" : "singer"} joined: ${cleanName}${isHost ? " (host)" : ""}`);
     r.upsertSinger(socket.data.singerId!, cleanName, socket.id, screen);
     ack({ ok: true, state: r.state(), isHost, ...(claimed ? { hostToken: r.hostToken } : {}) });
     if (claimed) socket.emit("notice", { level: "info", message: "You're the host of this room." });
@@ -207,13 +224,8 @@ io.on("connection", (socket) => {
     if (!r || !r.hasHostPowers(socket.data.singerId)) return ack({ ok: false, error: "Only the host can do that." });
     const target = r.singers.get(String(singerId));
     if (!target || target.screen || target.sockets.size === 0) return ack({ ok: false, error: "That person isn't connected right now." });
-    const previous = r.hostId;
-    const token = r.transferHost(target.id);
-    if (!token) return ack({ ok: false, error: "Couldn't hand over host." });
-    // someone else (the screen) moved host away from this person: tell them who has it now
-    if (previous && previous !== socket.data.singerId) r.notify(previous, { level: "info", message: `Host moved to ${target.name}.` });
-    io.to(r.singerChannel(target.id)).emit("host:token", { hostToken: token });
-    r.notify(target.id, { level: "info", message: "You're now the host." });
+    // (when the screen moves host away from someone, assignHost tells them who has it now)
+    if (!r.assignHost(target.id, socket.data.singerId)) return ack({ ok: false, error: "Couldn't hand over host." });
     ack({ ok: true });
   });
 
@@ -279,4 +291,17 @@ io.on("connection", (socket) => {
 
 http.listen(PORT, () => {
   console.log(`karaoke server listening on http://localhost:${PORT}`);
+  void credentials.load().then(
+    (saved) => {
+      if (!saved) console.warn("admin: no password set yet. Sign in at /admin with Administrator / password; you'll be asked to choose a new one.");
+    },
+    (e) => console.error("admin:", (e as Error).message),
+  );
 });
+
+process.on("uncaughtException", (e) => {
+  console.error("uncaught exception:", e);
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 200).unref(); // let the log line reach the file
+});
+process.on("unhandledRejection", (e) => console.error("unhandled rejection:", e));

@@ -63,6 +63,7 @@ export class Room {
     if (typeof patch.openControls === "boolean") this.settings.openControls = patch.openControls;
     // only affects songs added from now on; the current queue order is left alone
     if (typeof patch.fairQueue === "boolean") this.settings.fairQueue = patch.fairQueue;
+    this.say(`settings: everyone-can-control ${this.settings.openControls ? "on" : "off"}, fair-queue ${this.settings.fairQueue ? "on" : "off"}`);
     this.broadcast();
   }
 
@@ -87,6 +88,40 @@ export class Room {
   ) {
     this.output = this.attach(new ScreenOutput(io, code));
     log.openRoom({ roomId: this.id, roomCode: code, createdAt: this.createdAt });
+    this.say("room created");
+  }
+
+  /** Total songs that have left the stage in this room. */
+  playCount = 0;
+
+  /** Room event log line (the logger files these under the room's code). */
+  say(message: string) {
+    console.log(`[${this.code}] ${message}`);
+  }
+
+  /**
+   * Make `toSingerId` the host, give them the proof token and tell the people
+   * affected. `actorId` is whoever did it (not told about their own action);
+   * omit it when the admin does it.
+   */
+  assignHost(toSingerId: string, actorId?: string, by = "the admin"): boolean {
+    const target = this.singers.get(toSingerId);
+    const previous = this.hostId;
+    const token = this.transferHost(toSingerId);
+    if (!target || !token) return false;
+    if (previous && previous !== actorId) this.notify(previous, { level: "info", message: `Host moved to ${target.name}.` });
+    this.io.to(this.singerChannel(target.id)).emit("host:token", { hostToken: token });
+    this.notify(target.id, { level: "info", message: actorId ? "You're now the host." : `You're now the host (set by ${by}).` });
+    this.say(`host: ${this.singers.get(previous ?? "")?.name ?? "nobody"} -> ${target.name}${actorId ? "" : ` (by ${by})`}`);
+    return true;
+  }
+
+  /** Close the room for good: tell everyone, drop their connections, stop playback. */
+  async close(message: string) {
+    this.say(`room closed: ${message}`);
+    this.io.to(this.channel).emit("room:closed", { message });
+    this.io.in(this.channel).disconnectSockets(true);
+    await this.dispose();
   }
 
   get channel() {
@@ -228,6 +263,7 @@ export class Room {
       });
     }
     this.queue.splice(insertAt, 0, item);
+    this.say(`queued by ${singer.name}: "${item.title}" (${item.videoId}) at #${insertAt + 1}`);
 
     if (!this.nowPlaying) this.advance();
     else this.broadcast();
@@ -295,6 +331,7 @@ export class Room {
     if (this.nowPlaying) {
       const playedAt = Date.now();
       this.log.record(toPlayRecord(this.id, this.code, this.nowPlaying, playedAt)); // every song, forever
+      this.playCount++;
       this.history.unshift({ ...this.nowPlaying, playedAt });
       this.history.length = Math.min(this.history.length, HISTORY_LIMIT);
       this.previous = this.nowPlaying;
@@ -308,6 +345,7 @@ export class Room {
     this.progress = null;
     this.progressAt = null;
     if (next) {
+      this.say(`now playing: "${next.title}" (${next.videoId}) for ${next.singerName}`);
       void this.output.play(next);
       this.notify(next.singerId, { level: "info", message: `🎤 You're on! "${next.title}"` });
       const upNext = this.queue[0];
@@ -404,6 +442,7 @@ export class RoomRegistry {
       const cutoff = Date.now() - 6 * 3600e3;
       for (const [code, room] of this.rooms)
         if (!room.isConnected() && room.lastActive < cutoff) {
+          room.say("room expired (idle for 6 hours)");
           void room.dispose();
           this.rooms.delete(code);
         }
@@ -422,5 +461,19 @@ export class RoomRegistry {
 
   get(code: string | undefined): Room | undefined {
     return code ? this.rooms.get(code.toUpperCase()) : undefined;
+  }
+
+  /** Every live room, oldest first. */
+  list(): Room[] {
+    return [...this.rooms.values()].sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Close and forget a room. Returns false when there's no such room. */
+  async delete(code: string, message: string): Promise<boolean> {
+    const room = this.get(code);
+    if (!room) return false;
+    this.rooms.delete(room.code);
+    await room.close(message);
+    return true;
   }
 }
