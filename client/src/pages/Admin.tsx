@@ -355,7 +355,8 @@ function RoomsTab({ run }: { run: Run }) {
                   <b>{duration(now - r.createdAt)}</b> running
                 </span>
                 <span className="muted small">
-                  Host: {r.hostName ?? "nobody"} · {r.singers.filter((s) => s.online && !s.screen).length} online · {r.queue.length} queued ·{" "}
+                  Host: {r.hostName ?? "nobody"} · {r.singers.filter((s) => s.online && !s.screen).length} of {r.singers.filter((s) => !s.screen).length} online ·{" "}
+                  {r.queue.length} queued ·{" "}
                   {r.screenConnected ? "screen on" : "no screen"}
                 </span>
               </span>
