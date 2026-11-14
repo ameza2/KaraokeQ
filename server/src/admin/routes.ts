@@ -258,7 +258,14 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
   const limitOf = (req: Request) => Math.max(1, Math.min(2000, Number(req.query.limit) || 300));
 
   router.get("/logs", async (req, res) => {
-    res.json({ lines: await logger.tail(null, limitOf(req)), rooms: await logger.roomsWithLogs(), live: rooms.list().map((r) => r.code) });
+    // ?day=YYYY-MM-DD shows one day's file; without it, the most recent lines across days
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day ?? "")) ? String(req.query.day) : undefined;
+    res.json({
+      lines: await logger.tail(null, limitOf(req), day),
+      days: await logger.systemDays(),
+      rooms: await logger.roomsWithLogs(),
+      live: rooms.list().map((r) => r.code),
+    });
   });
 
   router.get("/logs/:code", async (req, res) => {

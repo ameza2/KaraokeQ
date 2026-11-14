@@ -627,6 +627,8 @@ function DebugTab({ run }: { run: Run }) {
   const [auto, setAuto] = useState(true);
   const [lines, setLines] = useState<LogLine[]>([]);
   const [logRooms, setLogRooms] = useState<{ all: string[]; live: string[] }>({ all: [], live: [] });
+  const [day, setDay] = useState(""); // "" = latest lines; or one day's system log file
+  const [days, setDays] = useState<string[]>([]);
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true); // keep the view pinned to the newest line unless the admin scrolled up
 
@@ -637,16 +639,17 @@ function DebugTab({ run }: { run: Run }) {
 
   const loadLogs = useCallback(async () => {
     if (scope === "system") {
-      const r = await run(() => api<{ lines: LogLine[]; rooms: string[]; live: string[] }>("GET", `/logs?limit=${limit}`));
+      const r = await run(() => api<{ lines: LogLine[]; days: string[]; rooms: string[]; live: string[] }>("GET", `/logs?limit=${limit}${day ? `&day=${day}` : ""}`));
       if (r) {
         setLines(r.lines);
+        setDays(r.days);
         setLogRooms({ all: r.rooms, live: r.live });
       }
     } else {
       const r = await run(() => api<{ lines: LogLine[] }>("GET", `/logs/${scope}?limit=${limit}`));
       if (r) setLines(r.lines);
     }
-  }, [run, scope, limit]);
+  }, [run, scope, limit, day]);
   usePolling(loadLogs, 3000, auto);
   useEffect(() => void loadLogs(), [loadLogs]);
   useEffect(() => {
@@ -695,6 +698,19 @@ function DebugTab({ run }: { run: Run }) {
               ))}
             </select>
           </label>
+          {scope === "system" && (
+            <label className="muted small">
+              Day
+              <select value={day} onChange={(e) => setDay(e.target.value)}>
+                <option value="">Latest</option>
+                {days.map((d) => (
+                  <option key={d} value={d}>
+                    {new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="muted small">
             Level
             <select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}>
