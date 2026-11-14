@@ -1,11 +1,12 @@
-import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { QueueItem } from "@karaoke/shared";
 
 /**
  * The complete record of every song played in every room. Rooms only keep the
- * last 30 in memory (that's what singers see); this keeps everything.
+ * last 30 in memory (that's what singers see); this keeps everything, for
+ * 30 days after a room's last song.
  *
  * Storage sits behind the PlayLog interface so the file implementation below can
  * be swapped for a database without touching the room code.
@@ -30,6 +31,8 @@ export interface RoomRecord {
   createdAt: number;
 }
 
+export const PLAY_LOG_KEEP_DAYS = 30;
+
 export interface PlayLog {
   /** A room was created. */
   openRoom(room: RoomRecord): void;
@@ -44,6 +47,9 @@ export interface PlayLog {
  * The first line describes the room ({"type":"room",…}), then one
  * {"type":"play",…} line per song. Append-only, so a crash loses at most the
  * line being written, and each line maps 1:1 to a future database row.
+ *
+ * A room's file is deleted once nothing has been written to it for
+ * PLAY_LOG_KEEP_DAYS (checked at startup and once a day).
  */
 export class FilePlayLog implements PlayLog {
   private readonly dir: string;
@@ -51,12 +57,31 @@ export class FilePlayLog implements PlayLog {
   private writes = new Map<string, Promise<void>>(); // per-file write chain (keeps lines in order)
   private ready: Promise<void>;
 
-  constructor(dataDir: string) {
+  constructor(
+    dataDir: string,
+    private keepDays = PLAY_LOG_KEEP_DAYS,
+  ) {
     this.dir = path.join(dataDir, "rooms");
     this.ready = mkdir(this.dir, { recursive: true }).then(
       () => {},
       (e) => console.error(`[playlog] can't create ${this.dir}:`, e),
     );
+    void this.ready.then(() => this.prune());
+    setInterval(() => void this.prune(), 24 * 3600e3).unref();
+  }
+
+  /** Delete room files with no new line for longer than the retention period. Returns how many went. */
+  async prune(now = Date.now()): Promise<number> {
+    const cutoff = now - this.keepDays * 24 * 3600e3;
+    let removed = 0;
+    for (const name of await readdir(this.dir).catch(() => [] as string[])) {
+      if (!name.endsWith(".jsonl")) continue;
+      const file = path.join(this.dir, name);
+      const s = await stat(file).catch(() => null);
+      if (s?.isFile() && s.mtimeMs < cutoff) await unlink(file).then(() => removed++, () => {});
+    }
+    if (removed) console.log(`play log: removed ${removed} room file${removed === 1 ? "" : "s"} older than ${this.keepDays} days`);
+    return removed;
   }
 
   openRoom(room: RoomRecord) {
