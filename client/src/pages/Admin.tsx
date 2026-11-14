@@ -5,6 +5,7 @@ import {
   THEMES,
   THEME_LABELS,
   type AdminRoomReport,
+  type RoomSettings,
   type AdminSession,
   type AdminStats,
   type LogLine,
@@ -422,6 +423,10 @@ function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomRe
   const base = `${window.location.protocol}//${lanHost}/r/${room.code}`;
   const [allPlays, setAllPlays] = useState<QueueItem[] | null>(null);
   const people = room.singers.filter((s) => !s.screen);
+  const setSetting = async (patch: Partial<RoomSettings>, done: string) => {
+    await run(() => api("PUT", `/rooms/${room.code}/settings`, patch), `${room.code}: ${done}`);
+    await onChanged();
+  };
 
   return (
     <div className="admin-room-body">
@@ -431,8 +436,38 @@ function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomRe
         <Fact label="Last activity" value={`${duration(now - room.lastActive)} ago`} />
         <Fact label="Songs played" value={String(room.playCount)} />
         <Fact label="Screen" value={room.screenConnected ? `Connected${room.screenHost ? ` (${room.screenHost})` : ""}` : "Not connected"} />
-        <Fact label="Settings" value={`Everyone can control ${room.settings.openControls ? "on" : "off"} · Fair queue ${room.settings.fairQueue ? "on" : "off"}`} />
       </dl>
+
+      <h3>Settings</h3>
+      <div className="admin-settings">
+        <label className="check">
+          <input type="checkbox" checked={room.settings.openControls} onChange={(e) => void setSetting({ openControls: e.target.checked }, `Everyone can control ${e.target.checked ? "on" : "off"}`)} />
+          <span>
+            Everyone can control
+            <span className="muted small">Any singer can skip, go back, seek and reorder</span>
+          </span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={room.settings.fairQueue} onChange={(e) => void setSetting({ fairQueue: e.target.checked }, `Fair queue ${e.target.checked ? "on" : "off"}`)} />
+          <span>
+            Fair queue
+            <span className="muted small">Singers with fewer songs queued go first</span>
+          </span>
+        </label>
+        <label className="check colour">
+          <span>
+            Room colour
+            <span className="muted small">Also set by the host in the room's menu</span>
+          </span>
+          <select value={room.settings.theme} onChange={(e) => void setSetting({ theme: e.target.value as ThemeName }, `Colour set to ${THEME_LABELS[e.target.value as ThemeName]}`)}>
+            {THEMES.map((t) => (
+              <option key={t} value={t}>
+                {THEME_LABELS[t]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <h3>Now playing</h3>
       {room.nowPlaying ? (

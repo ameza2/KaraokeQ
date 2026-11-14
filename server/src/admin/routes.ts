@@ -188,6 +188,17 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, dataDi
     res.json({ room: report(room) });
   });
 
+  // The same settings the room's host has: everyone-can-control, fair queue, colour preset.
+  router.put("/rooms/:code/settings", (req, res) => {
+    const room = rooms.get(req.params.code);
+    if (!room) return void res.status(404).json({ error: "No such room." });
+    const { openControls, fairQueue, theme } = req.body ?? {};
+    if (theme !== undefined && !isTheme(theme)) return void res.status(400).json({ error: "Unknown colour preset." });
+    if ([openControls, fairQueue].some((v) => v !== undefined && typeof v !== "boolean")) return void res.status(400).json({ error: "Settings are on or off." });
+    room.updateSettings({ openControls, fairQueue, theme });
+    res.json({ room: report(room) });
+  });
+
   // Every song played in the room (the report's `history` is only the last 30).
   router.get("/rooms/:code/plays", async (req, res) => {
     const room = rooms.get(req.params.code);
