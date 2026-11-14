@@ -1,0 +1,131 @@
+// Types shared between the server and the client.
+
+export interface VideoResult {
+  videoId: string;
+  title: string;
+  channel: string;
+  duration: string;
+  thumb: string;
+  /** false = uploader blocked playback outside youtube.com (won't work on /screen). */
+  embeddable?: boolean;
+}
+
+export interface RoomSettings {
+  /** Everyone gets the host's playback/queue controls (skip, back, seek, reorder, remove). */
+  openControls: boolean;
+  /**
+   * Fair queue (default on): a new request goes after every other singer's song of the
+   * same round, so people with fewer songs queued go first. Off: first come, first served.
+   */
+  fairQueue: boolean;
+}
+
+export interface SearchPage {
+  results: VideoResult[];
+  hasMore: boolean;
+  hidden: number; // results dropped because they can't play on the current output
+}
+
+export const PAGE_SIZES = [10, 25, 50, 100] as const;
+
+export const MODE_LABELS: Record<OutputMode, { name: string; hint: string }> = {
+  screen: { name: "Web player", hint: "Only showing videos that can play on the TV screen page." },
+  lounge: { name: "YouTube TV app", hint: "Casting to the TV's YouTube app, so every video works." },
+};
+
+export interface QueueItem extends VideoResult {
+  id: string;
+  singerId: string;
+  singerName: string;
+  addedAt: number;
+  playedAt?: number; // set on history entries
+}
+
+export type OutputMode = "screen" | "lounge";
+
+export interface Singer {
+  id: string;
+  name: string;
+  screen?: boolean; // the room's screen device (not a person)
+  online: boolean;
+}
+
+export interface RoomState {
+  code: string;
+  mode: OutputMode;
+  nowPlaying: QueueItem | null;
+  paused: boolean;
+  queue: QueueItem[];
+  singers: Singer[];
+  screens: number; // connected /screen displays
+  history: QueueItem[]; // most recent first, capped
+  canGoBack: boolean; // ⏮ can return to the previous song (one step only)
+  hostId: string | null;
+  /** Device id of the room's active screen. That device gets the host's permissions. */
+  screenId: string | null; // singerId of the current host (null until someone claims a TV room)
+  settings: RoomSettings;
+}
+
+// Commands the server sends to a /screen display.
+export type ScreenCommand =
+  | { action: "play"; item: QueueItem; startAt?: number; paused?: boolean }
+  | { action: "pause" }
+  | { action: "resume" }
+  | { action: "seek"; seconds: number }
+  | { action: "stop" };
+
+/** Playback position, reported by a screen and relayed to phones. */
+export interface Progress {
+  itemId: string;
+  time: number; // seconds
+  duration: number; // seconds (0 = unknown yet)
+}
+
+// Events a /screen display reports back.
+export interface ScreenEvent {
+  type: "ended" | "error" | "playing" | "paused" | "skip-blocked";
+  itemId: string;
+  errorCode?: number;
+}
+
+export interface Notice {
+  level: "info" | "error";
+  message: string;
+}
+
+export type Ack<T = {}> = ({ ok: true } & T) | { ok: false; error: string };
+
+export interface ClientToServer {
+  "room:join": (
+    p: { code: string; singerId: string; name: string; hostToken?: string; asScreen?: boolean },
+    ack: (r: Ack<{ state: RoomState; isHost: boolean; hostToken?: string }>) => void,
+  ) => void;
+  "singer:rename": (p: { name: string }) => void;
+  "queue:add": (p: { video: VideoResult }, ack: (r: Ack) => void) => void;
+  "queue:remove": (p: { itemId: string }) => void;
+  "queue:move": (p: { itemId: string; toIndex: number }) => void;
+  "playback:skip": () => void;
+  "playback:rewind": () => void;
+  "history:replay": (p: { itemId: string }, ack: (r: Ack) => void) => void;
+  "playback:pause": () => void;
+  "playback:resume": () => void;
+  "playback:seek": (p: { seconds: number }) => void;
+  "host:transfer": (p: { singerId: string }, ack: (r: Ack) => void) => void;
+  "settings:update": (p: Partial<RoomSettings>) => void;
+  "screen:progress": (p: Progress) => void;
+  "screen:join": (p: { code: string; deviceId?: string; host?: string }, ack: (r: Ack<{ state: RoomState }>) => void) => void;
+  "screen:event": (e: ScreenEvent) => void;
+}
+
+export interface ServerToClient {
+  "room:state": (s: RoomState) => void;
+  "screen:command": (c: ScreenCommand) => void;
+  "playback:progress": (p: Progress) => void;
+  /** Sent to a screen right before it's disconnected because a newer screen joined. */
+  "screen:replaced": () => void;
+  /** This screen's address (a raw IP) is blocked for the current video; others may play it. */
+  "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" }) => void;
+  /** Sent to a singer who was just made host: their proof for future reconnects. */
+  "host:token": (p: { hostToken: string }) => void;
+  notice: (n: Notice) => void;
+}

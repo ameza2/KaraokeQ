@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+
+# play log (every song played in every room)
+data/
