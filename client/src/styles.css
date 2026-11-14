@@ -2014,3 +2014,20 @@ option {
     margin-left: 3.1rem;
   }
 }
+
+/* ---------- admin: room tools + settings ---------- */
+.room-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+.room-tools .input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.room-tools label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}

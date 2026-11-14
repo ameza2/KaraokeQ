@@ -259,6 +259,9 @@ function RoomsTab({ run }: { run: Run }) {
   const [, setTick] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminRoomReport | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("length");
+  const [desc, setDesc] = useState(true);
 
   const load = useCallback(async () => {
     const r = await run(() => api<{ now: number; rooms: AdminRoomReport[] }>("GET", "/rooms"));
@@ -274,6 +277,17 @@ function RoomsTab({ run }: { run: Run }) {
   }, []);
 
   const now = Date.now() + skew;
+  // Search matches the room code, the host, anyone in the room, and song titles.
+  const q = query.trim().toLowerCase();
+  const visible = (rooms ?? [])
+    .filter(
+      (r) =>
+        !q ||
+        r.code.toLowerCase().includes(q) ||
+        r.singers.some((x) => x.name.toLowerCase().includes(q)) ||
+        [r.nowPlaying, ...r.queue].some((x) => x?.title.toLowerCase().includes(q)),
+    )
+    .sort((a, b) => (SORTS[sort].value(a) - SORTS[sort].value(b)) * (desc ? -1 : 1) || a.code.localeCompare(b.code));
   const online = rooms?.reduce((n, r) => n + r.singers.filter((s) => s.online && !s.screen).length, 0) ?? 0;
 
   return (
@@ -297,10 +311,42 @@ function RoomsTab({ run }: { run: Run }) {
         </button>
       </div>
 
+      {rooms && rooms.length > 0 && (
+        <div className="room-tools">
+          <input
+            className="input"
+            type="search"
+            placeholder="Find a room: code, person or song"
+            aria-label="Find a room"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <label className="muted small">
+            Sort by
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              {(Object.keys(SORTS) as SortKey[]).map((k) => (
+                <option key={k} value={k}>
+                  {SORTS[k].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn small" onClick={() => setDesc((d) => !d)} aria-label={desc ? "Sorted high to low. Switch to low to high" : "Sorted low to high. Switch to high to low"}>
+            {desc ? SORTS[sort].high : SORTS[sort].low} {desc ? "↓" : "↑"}
+          </button>
+        </div>
+      )}
+
       {rooms?.length === 0 && <p className="muted center pad">No rooms right now. Add one, or start a party from the home page.</p>}
+      {rooms && rooms.length > 0 && visible.length === 0 && <p className="muted center pad">No rooms match "{query.trim()}".</p>}
+      {q && visible.length > 0 && rooms && (
+        <p className="muted small">
+          Showing {visible.length} of {rooms.length} rooms
+        </p>
+      )}
 
       <ul className="admin-rooms">
-        {rooms?.map((r) => (
+        {visible.map((r) => (
           <li key={r.id} className={`admin-room ${open === r.code ? "open" : ""}`}>
             <button className="admin-room-head" aria-expanded={open === r.code} onClick={() => setOpen(open === r.code ? null : r.code)}>
               <span className="admin-room-code">{r.code}</span>
@@ -360,6 +406,15 @@ function RoomsTab({ run }: { run: Run }) {
     </section>
   );
 }
+
+type SortKey = "length" | "singers" | "online";
+const people = (r: AdminRoomReport) => r.singers.filter((s) => !s.screen);
+const SORTS: Record<SortKey, { label: string; value: (r: AdminRoomReport) => number; high: string; low: string }> = {
+  // an older room has run longer, so "longest first" is the smallest createdAt
+  length: { label: "Session length", value: (r) => -r.createdAt, high: "Longest first", low: "Shortest first" },
+  singers: { label: "Singers", value: (r) => people(r).length, high: "Most first", low: "Fewest first" },
+  online: { label: "Singers online", value: (r) => people(r).filter((s) => s.online).length, high: "Most first", low: "Fewest first" },
+};
 
 function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomReport; now: number; run: Run; onChanged: () => Promise<void>; onDelete: () => void }) {
   const lanHost = useLanHost();
