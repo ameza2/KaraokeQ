@@ -56,7 +56,7 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 |---|---|---|
 | `PORT` | `3001` | Server port |
 | `KARAOKE_HOST` | auto (`<ip>.nip.io`) | Hostname to share, if your network blocks nip.io/sslip.io (see below) |
-| `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, site settings and the admin login are kept |
+| `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, performance history, settings and the admin login are kept |
 | `API_URL` | `http://localhost:3001` | Dev only: where Vite proxies the API |
 
 On Windows PowerShell: `$env:PORT = "4000"; npm start`.
@@ -112,7 +112,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 | Section | Items |
 |---|---|
 | **Room** | Room history · Invite singers (QR code and link) · Change your name |
-| **Settings** (host/screen) | **Everyone can control:** off by default; when on, everyone can skip, ⏮, seek, reorder and remove · **Fair queue:** on by default (see below) |
+| **Settings** (host/screen) | **Everyone can control:** off by default; when on, everyone can skip, ⏮, seek, reorder and remove · **Fair queue:** on by default (see below) · **Room colour:** Orange, Blue, White or Green, on every device in the room |
 | **Host & screen** (host/screen) | Make someone else host · Play on this device · Open TV screen (always opens the shareable address) |
 
 ### Queue rules
@@ -138,7 +138,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - **Play log:** every song played in every room is saved, whether finished or skipped:
   - **Files:** `data/rooms/<date>_<CODE>_<roomId>.jsonl`. The first line describes the room, then one line per song: video, title, singer, and when it was added and played.
   - **API:** `GET /api/rooms/<CODE>/plays` returns a live room's full list.
-  - **Notes:** a rewound song is logged again when it leaves the stage a second time. `data/` is git-ignored and safe to delete.
+  - **Notes:** a rewound song is logged again when it leaves the stage a second time. A room's file is deleted 30 days after its last song. `data/` is git-ignored and safe to delete.
 
 ### Admin area (`/admin`)
 
@@ -153,9 +153,12 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 
 **Rooms tab**
 - Every live room with its **running time**, host, people online, queue length and screen status. Refreshes every 3 seconds.
+- **Find a room:** the search box matches the room code, anyone in the room, and song titles (now playing or queued).
+- **Sort** by session length, number of singers, or singers online, in either direction.
 - Open a room for the full report:
   - Created time, last activity and songs played.
-  - Screen address and the room's settings.
+  - Screen address.
+  - **Settings** as checkboxes you can change from here: Everyone can control, Fair queue, plus the room's colour.
   - Now playing, **users** (online or offline), the **queue**, and the **queue history**: the last 30 songs, with a button to load every song from the play log.
 - **Make host** next to any singer assigns the host role. The new host and the previous host are both told.
 - **+ Add room** creates a room; the first person to join becomes its host.
@@ -163,21 +166,26 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 
 **Appearance tab**
 - Colour presets: **Orange** (default), **Blue**, **White** and **Green**. White is a neutral monochrome look; the interface stays dark.
-- The preset applies to every room and device, switches live on open pages, and is saved in `data/settings.json`.
+- The preset here changes the **admin pages only**, and is saved in `data/settings.json`.
+- **Rooms have their own colour:** the host picks it in the room's menu (☰ → Settings → Room colour), and you can set it per room on the Rooms tab. The home and screen landing pages always use the default.
 
 **Debug tab**
 - **Server:** CPU, memory, system memory, uptime, connections, rooms, log size, Node version and the data folder. Refreshes every 3 seconds.
+- **Performance over time:** line charts of CPU, memory, connections and rooms for the last 1 hour, 6 hours, 24 hours, 3 days or 7 days.
+  - The server records one sample a minute and keeps 7 days, in `data/metrics/samples.jsonl`, so the history survives restarts.
+  - Hover or tap a chart for the value at that time. A break in a line means the server was off.
+  - "Show the numbers as a table" lists the same data.
 - **Logs:** the system log or one room's log (including closed rooms), filtered by level, with a live view.
 - **Log files** are local files only, never a database:
-  - `data/logs/server.log` has every line.
-  - `data/logs/rooms/<CODE>.log` has one room's lines: created, joins, songs queued and played, host changes, settings, screen errors, closed.
-  - Each file rotates to `<name>.1` at 5 MB.
+  - `data/logs/server-YYYY-MM-DD.log` has every line, one file per day. The last 30 days are kept; older days are deleted automatically.
+  - `data/logs/rooms/<CODE>.log` has one room's lines: created, joins, songs queued and played, host changes, settings, screen errors, closed. Each file holds at most 5 MB; when it's full, the oldest lines make room for new ones.
+  - The play log (`data/rooms/`) keeps each room for 30 days after its last song.
 
 **Account tab:** change the password.
 
 ### Rooms and state
 - **What's in memory:** live rooms (queue, host, settings). Rooms expire after 6 idle hours, and **a server restart clears all live rooms**.
-- **What survives a restart:** the files in `data/`: the play log, log files, the colour preset and the admin password.
+- **What survives a restart:** the files in `data/`: the play log, log files, performance history, the admin colour preset and the admin password. A room's colour is part of the room, so it's lost with it.
 
 ---
 
@@ -213,7 +221,8 @@ server/   Express + Socket.IO
   src/net.ts              LAN IP + shareable hostname (nip.io / sslip.io)
   src/playLog.ts          play log (PlayLog interface + JSON-lines file store)
   src/logger.ts           log files: captures console output; system + per-room logs
-  src/siteSettings.ts     site-wide settings (colour preset)
+  src/siteSettings.ts     admin-page settings (its colour preset)
+  src/metrics.ts          performance history: one sample a minute, 7 days
   src/admin/              admin login (scrypt credential file) and the /api/admin routes
   src/playback/           PlaybackOutput interface; ScreenOutput (browser screen); LoungeOutput (stub)
 client/   React + Vite
@@ -222,9 +231,10 @@ client/   React + Vite
   src/pages/Room.tsx      room page: now playing, controls, queue, menu
   src/pages/Search.tsx    search + autocomplete
   src/pages/Admin.tsx     admin area: sign-in, rooms, appearance, debug, account
-  src/lib/theme.ts        applies the site colour preset
+  src/lib/theme.ts        applies a colour preset (the room's, or the admin's)
+  src/components/PerfCharts.tsx  performance charts on the admin debug tab
   src/components/ScreenPlayer.tsx  YouTube player, full screen + controls
-data/     runtime files, git-ignored: rooms/ (play log), logs/, admin/ (login), settings.json
+data/     runtime files, git-ignored: rooms/ (play log), logs/, metrics/, admin/ (login), settings.json
 ```
 
 ## Next steps
