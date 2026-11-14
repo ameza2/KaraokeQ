@@ -104,7 +104,7 @@ app.get("/api/suggest", async (req, res) => {
 // How other devices should reach us: a hostname when one works (see net.ts), else LAN IPs.
 startShareHostWatch();
 app.get("/api/info", (_req, res) => {
-  res.json({ lanIps: lanIps(), shareHost: getShareHost(), theme: siteSettings.theme });
+  res.json({ lanIps: lanIps(), shareHost: getShareHost() });
 });
 
 // Admin area (sign-in, room reports and management, appearance, debug).

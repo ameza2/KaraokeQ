@@ -4,36 +4,37 @@ import path from "node:path";
 import { DEFAULT_THEME, THEMES, type ThemeName } from "@karaoke/shared";
 
 /**
- * Site-wide settings the admin controls (currently just the colour preset).
+ * Settings the admin controls that aren't tied to a room (currently the colour
+ * preset of the admin pages; each room keeps its own preset in its settings).
  * Kept in `<data>/settings.json`; behind this class so a database can replace it.
  */
 export interface SiteSettingsData {
-  theme: ThemeName;
+  adminTheme: ThemeName;
 }
 
 export const isTheme = (x: unknown): x is ThemeName => typeof x === "string" && (THEMES as readonly string[]).includes(x);
 
 export class SiteSettings {
   private readonly file: string;
-  private data: SiteSettingsData = { theme: DEFAULT_THEME };
+  private data: SiteSettingsData = { adminTheme: DEFAULT_THEME };
 
   constructor(dataDir: string) {
     this.file = path.join(dataDir, "settings.json");
     mkdirSync(dataDir, { recursive: true });
     try {
       const saved = JSON.parse(readFileSync(this.file, "utf8"));
-      if (isTheme(saved?.theme)) this.data.theme = saved.theme;
+      if (isTheme(saved?.adminTheme)) this.data.adminTheme = saved.adminTheme;
     } catch {
       // no file yet (or unreadable): defaults
     }
   }
 
-  get theme() {
-    return this.data.theme;
+  get adminTheme() {
+    return this.data.adminTheme;
   }
 
-  async setTheme(theme: ThemeName) {
-    this.data = { ...this.data, theme };
+  async setAdminTheme(adminTheme: ThemeName) {
+    this.data = { adminTheme };
     const tmp = `${this.file}.tmp`;
     await writeFile(tmp, JSON.stringify(this.data, null, 2) + "\n", "utf8");
     await rename(tmp, this.file);

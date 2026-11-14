@@ -5,12 +5,10 @@ import Home from "./pages/Home.tsx";
 import Room from "./pages/Room.tsx";
 import ScreenLanding from "./pages/Screen.tsx";
 import Admin from "./pages/Admin.tsx";
-import { initTheme } from "./lib/theme.ts";
 import { adoptCarriedIdentity, moveOffIpAddress } from "./lib/hostRedirect.ts";
 import "./styles.css";
 
 adoptCarriedIdentity();
-initTheme();
 // On a raw-IP address, hop to the hostname first (YouTube blocks many videos on IP pages).
 void moveOffIpAddress().then((moving) => {
   if (moving) return;

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { ThemeName } from "@karaoke/shared";
 
 /** Raw IP address. */
 export const isIpHost = (h: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.startsWith("[");
@@ -14,7 +13,6 @@ export const isRawAddress = (h: string) => isIpHost(h) || isLocalName(h);
 export interface ServerInfo {
   lanIps: string[];
   shareHost: string | null; // e.g. 192-168-0-5.nip.io
-  theme?: ThemeName; // site-wide colour preset
 }
 let info: Promise<ServerInfo> | null = null;
 export const getServerInfo = () =>

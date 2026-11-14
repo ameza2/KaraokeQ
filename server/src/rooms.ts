@@ -7,6 +7,7 @@ import { markNotEmbeddable, unmarkNotEmbeddable } from "./search.ts";
 import { getShareHost } from "./net.ts";
 import type { ScreenInfo } from "./playback/screen.ts";
 import { toPlayRecord, type PlayLog } from "./playLog.ts";
+import { THEMES } from "@karaoke/shared";
 
 type IO = Server<ClientToServer, ServerToClient>;
 
@@ -26,7 +27,7 @@ export class Room {
   hostToken = randomBytes(16).toString("hex");
   /** The host is a person (singerId), not a socket: every device they use gets host controls. */
   hostId: string | null = null;
-  settings: RoomSettings = { openControls: false, fairQueue: true };
+  settings: RoomSettings = { openControls: false, fairQueue: true, theme: "orange" };
   /** TV-created rooms have no host yet: the first phone to join claims it. */
   /** Videos that actually played on a screen in this room (so a later block is device-specific). */
   playedOk = new Set<string>();
@@ -63,7 +64,8 @@ export class Room {
     if (typeof patch.openControls === "boolean") this.settings.openControls = patch.openControls;
     // only affects songs added from now on; the current queue order is left alone
     if (typeof patch.fairQueue === "boolean") this.settings.fairQueue = patch.fairQueue;
-    this.say(`settings: everyone-can-control ${this.settings.openControls ? "on" : "off"}, fair-queue ${this.settings.fairQueue ? "on" : "off"}`);
+    if ((THEMES as readonly unknown[]).includes(patch.theme)) this.settings.theme = patch.theme!;
+    this.say(`settings: everyone-can-control ${this.settings.openControls ? "on" : "off"}, fair-queue ${this.settings.fairQueue ? "on" : "off"}, colour ${this.settings.theme}`);
     this.broadcast();
   }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
+  DEFAULT_THEME,
   THEMES,
   THEME_LABELS,
   type AdminRoomReport,
@@ -10,7 +11,7 @@ import {
   type QueueItem,
   type ThemeName,
 } from "@karaoke/shared";
-import { applyTheme } from "../lib/theme.ts";
+import { useTheme } from "../lib/theme.ts";
 import { api, ApiError, type Run } from "../lib/adminApi.ts";
 import { useLanHost } from "../lib/joinUrl.ts";
 
@@ -62,7 +63,9 @@ export default function Admin() {
   const [tab, setTab] = useState<Tab>("rooms");
   const [flash, setFlash] = useState<{ text: string; error?: boolean } | null>(null);
 
-  const refresh = useCallback(() => api<AdminSession>("GET", "/session").then(setSession, () => setSession({ authenticated: false })), []);
+  const signedOut = useCallback(() => setSession((s) => ({ authenticated: false, adminTheme: s?.adminTheme ?? DEFAULT_THEME })), []);
+  const refresh = useCallback(() => api<AdminSession>("GET", "/session").then(setSession, signedOut), [signedOut]);
+  useTheme(session?.adminTheme, "admin"); // the admin pages' own colour preset
   useEffect(() => void refresh(), [refresh]);
   useEffect(() => {
     document.title = "Admin · Karaoke Queue";
@@ -81,12 +84,12 @@ export default function Admin() {
         if (done) say(done);
         return result;
       } catch (e) {
-        if (e instanceof ApiError && e.status === 401) setSession({ authenticated: false });
+        if (e instanceof ApiError && e.status === 401) signedOut();
         else say((e as Error).message, true);
         return undefined;
       }
     },
-    [say],
+    [say, signedOut],
   );
 
   if (!session) return <main className="home muted">Loading…</main>;
@@ -132,7 +135,7 @@ export default function Admin() {
       </nav>
 
       {tab === "rooms" && <RoomsTab run={run} />}
-      {tab === "appearance" && <AppearanceTab run={run} />}
+      {tab === "appearance" && <AppearanceTab run={run} theme={session.adminTheme} onChange={(adminTheme) => setSession({ ...session, adminTheme })} />}
       {tab === "debug" && <DebugTab run={run} />}
       {tab === "account" && (
         <section className="admin-panel">
@@ -491,14 +494,14 @@ function SongList({ items, numbered, played }: { items: QueueItem[]; numbered?: 
 
 // ---------- appearance ----------
 
-function AppearanceTab({ run }: { run: Run }) {
-  const [theme, setTheme] = useState<ThemeName | null>(null);
-  useEffect(() => void run(() => api<{ theme: ThemeName }>("GET", "/theme")).then((r) => r && setTheme(r.theme)), [run]);
-
+function AppearanceTab({ run, theme, onChange }: { run: Run; theme: ThemeName; onChange: (t: ThemeName) => void }) {
   return (
     <section className="admin-panel">
-      <h2>Colour preset</h2>
-      <p className="muted small">Applies to every room and every device, and switches live. It's saved on the server.</p>
+      <h2>Admin colour preset</h2>
+      <p className="muted small">
+        Changes the admin pages only, on every device you sign in from. Each room has its own colour: its host picks it in the room's menu, and you can set
+        it per room on the Rooms tab.
+      </p>
       <div className="theme-grid" role="radiogroup" aria-label="Colour preset">
         {THEMES.map((t) => (
           <button
@@ -509,10 +512,7 @@ function AppearanceTab({ run }: { run: Run }) {
             data-theme={t}
             onClick={async () => {
               const r = await run(() => api<{ theme: ThemeName }>("PUT", "/theme", { theme: t }), `${THEME_LABELS[t]} applied`);
-              if (r) {
-                setTheme(r.theme);
-                applyTheme(r.theme);
-              }
+              if (r) onChange(r.theme);
             }}
           >
             <span className="theme-swatch" aria-hidden="true" />

@@ -89,12 +89,13 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, dataDi
     sessions.set(token, { ...result, expires: Date.now() + SESSION_MS });
     setCookie(res, token, SESSION_MS / 1000);
     console.log(`admin: ${result.username} signed in from ${who(req)}${result.mustChangePassword ? " (default password: change required)" : ""}`);
-    res.json({ authenticated: true, ...result } satisfies AdminSession);
+    res.json({ authenticated: true, ...result, adminTheme: settings.adminTheme } satisfies AdminSession);
   });
 
   router.get("/session", (req, res) => {
     const s = sessionOf(req);
-    res.json((s ? { authenticated: true, username: s.username, mustChangePassword: s.mustChangePassword } : { authenticated: false }) satisfies AdminSession);
+    const adminTheme = settings.adminTheme; // the sign-in form wears it too
+    res.json((s ? { authenticated: true, username: s.username, mustChangePassword: s.mustChangePassword, adminTheme } : { authenticated: false, adminTheme }) satisfies AdminSession);
   });
 
   router.post("/logout", (req, res) => {
@@ -196,16 +197,12 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, dataDi
 
   // ----- appearance -----
 
-  router.get("/theme", (_req, res) => {
-    res.json({ theme: settings.theme });
-  });
-
+  // Colour preset of the admin pages only (rooms have their own, in their settings).
   router.put("/theme", async (req, res) => {
     const theme = req.body?.theme;
     if (!isTheme(theme)) return void res.status(400).json({ error: "Unknown colour preset." });
-    await settings.setTheme(theme);
-    io.emit("site:theme", { theme }); // every open page switches live
-    console.log(`admin: colour preset set to ${theme}`);
+    await settings.setAdminTheme(theme);
+    console.log(`admin: admin colour preset set to ${theme}`);
     res.json({ theme });
   });
 

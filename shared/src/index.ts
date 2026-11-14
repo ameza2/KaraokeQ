@@ -10,6 +10,14 @@ export interface VideoResult {
   embeddable?: boolean;
 }
 
+// ---------- colour presets ----------
+// Each room has its own preset (chosen by its host); the admin page has one too.
+
+export const THEMES = ["orange", "blue", "white", "green"] as const;
+export type ThemeName = (typeof THEMES)[number];
+export const THEME_LABELS: Record<ThemeName, string> = { orange: "Orange", blue: "Blue", white: "White", green: "Green" };
+export const DEFAULT_THEME: ThemeName = "orange";
+
 export interface RoomSettings {
   /** Everyone gets the host's playback/queue controls (skip, back, seek, reorder, remove). */
   openControls: boolean;
@@ -18,6 +26,8 @@ export interface RoomSettings {
    * same round, so people with fewer songs queued go first. Off: first come, first served.
    */
   fairQueue: boolean;
+  /** The room's colour preset, on every device in the room. */
+  theme: ThemeName;
 }
 
 export interface SearchPage {
@@ -127,19 +137,10 @@ export interface ServerToClient {
   "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" }) => void;
   /** Sent to a singer who was just made host: their proof for future reconnects. */
   "host:token": (p: { hostToken: string }) => void;
-  /** The admin changed the site-wide colour preset. */
-  "site:theme": (p: { theme: ThemeName }) => void;
   /** The room was deleted (by the admin). The socket is disconnected right after. */
   "room:closed": (p: { message: string }) => void;
   notice: (n: Notice) => void;
 }
-
-// ---------- site theme ----------
-
-export const THEMES = ["orange", "blue", "white", "green"] as const;
-export type ThemeName = (typeof THEMES)[number];
-export const THEME_LABELS: Record<ThemeName, string> = { orange: "Orange", blue: "Blue", white: "White", green: "Green" };
-export const DEFAULT_THEME: ThemeName = "orange";
 
 // ---------- admin ----------
 
@@ -148,6 +149,8 @@ export interface AdminSession {
   username?: string;
   /** Still on the default password: everything else is locked until it's changed. */
   mustChangePassword?: boolean;
+  /** Colour preset of the admin pages (also sent before sign-in, for the sign-in form). */
+  adminTheme: ThemeName;
 }
 
 export interface AdminRoomReport {

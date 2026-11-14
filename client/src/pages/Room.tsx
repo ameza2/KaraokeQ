@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { QueueItem, Singer } from "@karaoke/shared";
+import { useTheme } from "../lib/theme.ts";
 import Scrubber from "../components/Scrubber.tsx";
 import Search from "./Search.tsx";
 import ScreenPlayer, { type PlayerHandle } from "../components/ScreenPlayer.tsx";
@@ -58,6 +59,7 @@ function NameForm({ code, onDone, initial = "" }: { code: string; onDone: (n: st
 
 function RoomView({ code, name, onRename, screenMode = false }: { code: string; name: string; onRename: (n: string) => void; screenMode?: boolean }) {
   const { me, state, isHost, isScreenDevice, hostPowers, canControl, error, connected, toasts, toast, progress, setProgress, socket } = useRoom(code, name, screenMode);
+  useTheme(state?.settings.theme, `room:${code}`); // the room's colour preset, chosen by its host
   const [tab, setTab] = useState<"search" | "queue">("search");
   const [sheet, setSheet] = useState<Sheet>(null);
   const [playHere, setPlayHere] = useState(() => screenMode || isPlayerDevice(code));
