@@ -12,10 +12,12 @@
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "tsc -p server --noEmit && tsc -p client --noEmit",
-    "test": "npm run test -w server"
+    "test": "npm run test -w server",
+    "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
     "concurrently": "^10.0.7",
+    "puppeteer-core": "^25.17.0",
     "typescript": "^7.0.2"
   }
 }
