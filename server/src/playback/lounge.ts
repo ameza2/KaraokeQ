@@ -41,6 +41,9 @@ export interface CastTarget {
   name: string;
 }
 
+/** An unknown upstream value as a plain object (anything else becomes empty), for field-by-field checks. */
+const asRecord = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
 const form = (o: Record<string, string>) => new URLSearchParams(o).toString();
 const FORM = { "Content-Type": "application/x-www-form-urlencoded" };
 
@@ -56,10 +59,9 @@ export async function pairCast(rawCode: string): Promise<CastTarget> {
   });
   if (res.status === 404 || res.status === 400) throw new Error("YouTube didn't accept that code. Check it on the TV (codes expire).");
   if (!res.ok) throw new Error(`YouTube pairing failed (${res.status}).`);
-  const json = (await res.json()) as { screen?: { screenId?: string; loungeToken?: string; name?: string } };
-  const s = json.screen;
-  if (!s?.screenId || !s.loungeToken) throw new Error("YouTube returned no TV for that code.");
-  return { screenId: s.screenId, loungeToken: s.loungeToken, name: s.name || "YouTube TV" };
+  const s = asRecord(asRecord(await res.json().catch(() => null)).screen);
+  if (typeof s.screenId !== "string" || typeof s.loungeToken !== "string" || !s.screenId || !s.loungeToken) throw new Error("YouTube returned no TV for that code.");
+  return { screenId: s.screenId, loungeToken: s.loungeToken, name: typeof s.name === "string" && s.name ? s.name : "YouTube TV" };
 }
 
 async function refreshToken(screenId: string): Promise<string> {
@@ -70,9 +72,9 @@ async function refreshToken(screenId: string): Promise<string> {
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`token refresh failed (${res.status})`);
-  const json = (await res.json()) as { screens?: { loungeToken?: string }[] };
-  const t = json.screens?.[0]?.loungeToken;
-  if (!t) throw new Error("token refresh returned no token");
+  const screens = asRecord(await res.json().catch(() => null)).screens;
+  const t = Array.isArray(screens) ? asRecord(screens[0]).loungeToken : undefined;
+  if (typeof t !== "string" || !t) throw new Error("token refresh returned no token");
   return t;
 }
 
@@ -95,7 +97,8 @@ class ChunkParser {
       const body = this.buf.slice(nl + 1, nl + 1 + n);
       this.buf = this.buf.slice(nl + 1 + n);
       try {
-        for (const e of JSON.parse(body) as [number, unknown[]][]) if (Array.isArray(e)) out.push(e);
+        const parsed: unknown = JSON.parse(body);
+        if (Array.isArray(parsed)) for (const e of parsed) if (Array.isArray(e) && typeof e[0] === "number" && Array.isArray(e[1])) out.push([e[0], e[1]]);
       } catch {
         /* skip a damaged chunk */
       }
@@ -302,8 +305,9 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
 
   private consume(events: [number, unknown[]][]) {
     for (const [idx, ev] of events) {
-      if (typeof idx === "number" && idx > this.aid) this.aid = idx;
-      const [name, data] = ev as [string, any];
+      if (idx > this.aid) this.aid = idx;
+      const [name, data] = ev;
+      if (typeof name !== "string") continue;
       // A bug in a listener (the room's code) must not look like a dropped link: the caller
       // would rebind a healthy session. Log it and carry on with the next event.
       try {
@@ -314,7 +318,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     }
   }
 
-  private handleEvent(idx: number, name: string, data: any) {
+  private handleEvent(idx: number, name: string, data: unknown) {
     this.emit("raw", name, data);
     if (castLog.verbose && !["noop", "c", "S", "onVideoQualityChanged", "onAudioTrackChanged", "onHasPreviousNextChanged", "autoplayUpNext", "onAutoplayModeChanged", "onVolumeChanged", "onSubtitlesTrackChanged"].includes(name)) console.log(`lounge[${this.name}] event #${idx} ${name} ${JSON.stringify(data)?.slice(0, 300)}`);
     switch (name) {
@@ -332,7 +336,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
         break;
       case "nowPlaying":
       case "onStateChange":
-        this.onState(name, data ?? {});
+        this.onState(name, asRecord(data));
         break;
     }
   }
@@ -344,7 +348,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
    *    `ext` and reported with "external", so the room can show it as the current video;
    *  - nothing (the TV went back to its home screen): "idle", after a short debounce.
    */
-  private onState(name: string, d: Record<string, string>) {
+  private onState(name: string, d: Record<string, unknown>) {
     if (name === "nowPlaying") this.tvVideoId = d.videoId ? String(d.videoId) : "";
     const cur = this.current;
     const vid = this.tvVideoId;
