@@ -139,8 +139,8 @@ export interface ServerToClient {
   "room:state": (s: RoomState) => void;
   "screen:command": (c: ScreenCommand) => void;
   "playback:progress": (p: Progress) => void;
-  /** Sent to a screen right before it's disconnected because a newer screen joined. */
-  "screen:replaced": () => void;
+  /** Sent to a screen right before it's disconnected because another screen joined or a YouTube cast was paired. */
+  "screen:replaced": (by: "screen" | "cast") => void;
   /** This screen's address (a raw IP) is blocked for the current video; others may play it. */
   "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" }) => void;
   /** Sent to a singer who was just made host: their proof for future reconnects. */

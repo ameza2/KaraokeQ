@@ -4,7 +4,7 @@ import { THEMES, THEME_LABELS, type QueueItem, type RoomState, type Singer, type
 import { useTheme } from "../lib/theme.ts";
 import Scrubber from "../components/Scrubber.tsx";
 import Search from "./Search.tsx";
-import ScreenPlayer, { type PlayerHandle } from "../components/ScreenPlayer.tsx";
+import ScreenPlayer, { takenOverText, type PlayerHandle, type ReplacedBy } from "../components/ScreenPlayer.tsx";
 import { qrSrc, useJoinUrl, useLanHost } from "../lib/joinUrl.ts";
 import { getName, isPlayerDevice, setLastScreenRoom, setName as saveName, setPlayerDevice } from "../lib/storage.ts";
 import { useRoom, type TimedProgress, type Toast } from "../lib/useRoom.ts";
@@ -64,7 +64,8 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
   const [sheet, setSheet] = useState<Sheet>(null);
   const [playHere, setPlayHere] = useState(() => screenMode || isPlayerDevice(code));
   const lanHost = useLanHost();
-  const [screenReplaced, setScreenReplaced] = useState(false); // another screen took playback from this device
+  const [screenReplacedBy, setScreenReplacedBy] = useState<ReplacedBy | null>(null); // what took playback from this device
+  const screenReplaced = screenReplacedBy !== null;
   const playerHandle = useRef<PlayerHandle | null>(null);
   const togglePlayHere = (on: boolean) => {
     setPlayerDevice(code, on);
@@ -99,7 +100,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
   const screenUrl = `${location.protocol}//${lanHost}/r/${code}/screen`;
   const currentHost = state.singers.find((x) => x.id === state.hostId) ?? null;
   const casting = state.mode === "lounge";
-  const showScreenHelp = !casting && ((isHost && !playHere && state.screens === 0) || (playHere && screenReplaced));
+  const showScreenHelp = (!casting && isHost && !playHere && state.screens === 0) || (playHere && screenReplaced);
   const applyName = (n: string) => {
     setSheet(null);
     if (n === name) return;
@@ -147,7 +148,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           deviceId={me}
           autoFull={screenMode}
           handle={playerHandle}
-          onReplacedChange={setScreenReplaced}
+          onReplacedChange={(replaced, by) => setScreenReplacedBy(replaced ? by : null)}
           controls={{
             paused: state.paused,
             canControl,
@@ -186,7 +187,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
 
       {showScreenHelp && (
         <div className="banner">
-          {screenReplaced ? "Another screen took over playback." : "Nothing is playing the videos."} Open{" "}
+          {screenReplacedBy ? takenOverText(screenReplacedBy) : "Nothing is playing the videos."} Open{" "}
           <a href={screenUrl} target="_blank" rel="noreferrer">
             <b>{lanHost}/r/{code}/screen</b>
           </a>{" "}

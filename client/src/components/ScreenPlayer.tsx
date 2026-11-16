@@ -80,8 +80,8 @@ export default function ScreenPlayer({
   deviceId?: string; // the room-page identity of this device (gets host powers while it's the screen)
   autoFull?: boolean; // open straight into full screen (screen mode)
   controls?: PlayerControls;
-  /** When given, the parent shows its own "another screen took over" message. */
-  onReplacedChange?: (replaced: boolean) => void;
+  /** When given, the parent shows its own "has taken over" message. */
+  onReplacedChange?: (replaced: boolean, by: ReplacedBy) => void;
   handle?: MutableRefObject<PlayerHandle | null>;
 }) {
   const isScreen = variant === "screen";
@@ -93,6 +93,7 @@ export default function ScreenPlayer({
   const [current, setCurrent] = useState<QueueItem | null>(null);
   const [showIntro, setShowIntro] = useState(false);
   const [replaced, setReplaced] = useState(false);
+  const [replacedBy, setReplacedBy] = useState<ReplacedBy>("screen");
   const [session, setSession] = useState(0); // bump to (re)join as the screen
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -222,8 +223,9 @@ export default function ScreenPlayer({
       setReopenFailed(false);
       setIpBlocked(b);
     });
-    s.on("screen:replaced", () => {
+    s.on("screen:replaced", (by) => {
       replacedHere = true;
+      setReplacedBy(by);
       s.disconnect(); // our side closes it, so socket.io won't auto-reconnect
       setReplaced(true);
       currentRef.current = null;
@@ -326,7 +328,7 @@ export default function ScreenPlayer({
   };
   if (handle) handle.current = { takeBack };
   useEffect(() => {
-    onReplacedChange?.(replaced);
+    onReplacedChange?.(replaced, replacedBy);
     if (!replaced) return;
     // Leave full screen: the player is hidden now, and a fullscreen hidden element
     // would leave a black overlay covering the page.
@@ -401,8 +403,12 @@ export default function ScreenPlayer({
       <main className="screen-msg replaced">
         <div className="stack center" style={{ maxWidth: 520 }}>
           <div className="orb" aria-hidden="true" />
-          <h2>This screen was replaced</h2>
-          <p className="muted">Room {code} is now playing on another display. Only one screen can play at a time.</p>
+          <h2>{takenOverText(replacedBy)}</h2>
+          <p className="muted">
+            {replacedBy === "cast"
+              ? `Room ${code} is now casting to the TV's YouTube app. Using this screen stops the cast.`
+              : `Room ${code} is now playing on another screen. Only one screen can play at a time.`}
+          </p>
           <button className="btn primary big" onClick={takeBack}>
             Use this screen instead
           </button>
@@ -410,7 +416,7 @@ export default function ScreenPlayer({
       </main>
     ) : (
       <div className="embed-note">
-        <span className="muted">Playing on another screen.</span>
+        <span className="muted">{takenOverText(replacedBy)}</span>
         <button className="btn small" onClick={takeBack}>
           Play here instead
         </button>
@@ -644,6 +650,13 @@ function FullControls({
       </div>
     </div>
   );
+}
+
+/** What replaced this screen: another screen, or the YouTube cast. */
+export type ReplacedBy = "screen" | "cast";
+
+export function takenOverText(by: ReplacedBy) {
+  return by === "cast" ? "YouTube cast has taken over." : "Another screen has taken over.";
 }
 
 /** Screen seek bar: auto-hides while playing; ←/→ (remotes) jump 10 seconds. */

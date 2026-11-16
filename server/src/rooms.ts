@@ -23,6 +23,9 @@ interface SingerRecord {
   screen: boolean;
 }
 
+/** Which room is casting to which TV (by the TV's screen id): the newest pairing wins. */
+const castOwners = new Map<string, Room>();
+
 export class Room {
   /** Proof of host for reconnects. Rotated on hand-over so the old host's copy stops working. */
   hostToken = randomBytes(16).toString("hex");
@@ -78,12 +81,12 @@ export class Room {
   singers = new Map<string, SingerRecord>();
   screens = new Set<string>();
   lastActive = Date.now();
-  /** The browser screen output; always present, so a TV that drops falls back to it. */
+  /** The browser screen output; always present (idle while a YouTube cast is the output). */
   readonly screenOutput: ScreenOutput;
-  /** The paired TV (YouTube app), when there is one. */
+  /** The YouTube cast (the TV's YouTube app), when one is paired. */
   lounge: LoungeOutput | null = null;
 
-  /** What the room drives right now: the TV while casting, else the browser screen. */
+  /** What the room drives right now: the YouTube cast while casting, else the browser screen. */
   get output(): PlaybackOutput {
     return this.mode === "lounge" && this.lounge ? this.lounge : this.screenOutput;
   }
@@ -243,6 +246,21 @@ export class Room {
     // keep display names on queued items in sync
     for (const item of this.queue) if (item.singerId === id) item.singerName = name;
     if (this.nowPlaying?.singerId === id) this.nowPlaying.singerName = name;
+  }
+
+  /**
+   * One output per room: tell every joined screen (except `except`) that it was replaced
+   * and drop it. `by` says what took over, for the message the old screen shows.
+   */
+  replaceScreens(except: string | null, by: "screen" | "cast") {
+    for (const id of [...this.screens]) {
+      if (id === except) continue;
+      const old = this.io.sockets.sockets.get(id);
+      old?.emit("screen:replaced", by);
+      old?.leave(`screen:${this.code}`); // stop it receiving commands right away
+      old?.disconnect(); // the client also hangs up on "screen:replaced" and won't rejoin
+      this.disconnect(id); // freezes the playback clock at the old screen's position
+    }
   }
 
   disconnect(socketId: string) {
@@ -454,23 +472,29 @@ export class Room {
    * Returns an error message, or null on success.
    */
   async pairCast(rawCode: string): Promise<{ error: string } | { name: string }> {
+    if (this.lounge) return { error: "Stop casting first, then pair the new code." };
     if (this.pairing) return { error: "Already pairing, one moment." };
     this.pairing = true;
     try {
-      const lounge = new LoungeOutput(await pairCast(rawCode));
+      const target = await pairCast(rawCode);
+      const lounge = new LoungeOutput(target);
       try {
         await lounge.connect();
       } catch (err) {
         await lounge.dispose();
         throw err;
       }
-      await this.dropLounge();
+      // The newest connection wins: another room casting to this TV loses it (and must not
+      // stop the video this room is about to start), and any joined screen is replaced.
+      const rival = castOwners.get(target.screenId);
+      if (rival && rival !== this) await rival.useScreen("The YouTube cast moved to another room. Pair again or open a screen.", { leaveTv: true });
+      castOwners.set(target.screenId, this);
+      this.replaceScreens(null, "cast");
       this.freezeProgress();
       const startAt = this.currentTime();
       this.lounge = lounge;
       this.wireLounge(lounge);
       this.mode = "lounge";
-      void this.screenOutput.stop(); // the browser screen goes idle
       if (this.nowPlaying) void lounge.play(this.nowPlaying, { startAt, paused: this.paused });
       void lounge.syncNow(); // picks up a video the TV was already playing
       this.say(`YouTube cast paired: "${lounge.name}"`);
@@ -585,11 +609,12 @@ export class Room {
   private async dropLounge() {
     const old = this.lounge;
     this.lounge = null;
+    if (old && castOwners.get(old.screen.screenId) === this) castOwners.delete(old.screen.screenId);
     await old?.dispose();
   }
 
   /** Stop casting and carry on from the same spot on the browser screen. */
-  async useScreen(message?: string) {
+  async useScreen(message?: string, opts: { leaveTv?: boolean } = {}) {
     if (!this.lounge) return;
     this.freezeProgress();
     const startAt = this.currentTime();
@@ -599,7 +624,7 @@ export class Room {
       this.nowPlaying = null;
       this.progress = null;
       this.progressAt = null;
-    } else void lounge.stop();
+    } else if (!opts.leaveTv) void lounge.stop();
     await this.dropLounge();
     this.mode = "screen";
     this.say(message ? `YouTube cast unpaired: ${message}` : "YouTube cast unpaired");

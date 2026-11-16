@@ -264,18 +264,13 @@ io.on("connection", (socket) => {
     if (socket.data.isScreen && room()?.mode === "screen") room()?.reportProgress(p);
   });
 
-  socket.on("screen:join", ({ code, deviceId, host }, ack) => {
+  socket.on("screen:join", async ({ code, deviceId, host }, ack) => {
     const r = rooms.get(code);
     if (!r) return ack({ ok: false, error: "That room doesn't exist (or has expired)." });
-    // One screen per room: the newest one wins; older ones are told and dropped.
-    for (const id of r.screens) {
-      if (id === socket.id) continue;
-      const old = io.sockets.sockets.get(id);
-      old?.emit("screen:replaced");
-      old?.leave(`screen:${r.code}`); // stop it receiving commands right away
-      old?.disconnect(); // the client also hangs up on "screen:replaced" and won't rejoin
-      r.disconnect(id); // freezes the playback clock at the old screen's position
-    }
+    // One output per room: the newest one wins. A screen joining stops the YouTube cast
+    // (the host pairs again to cast), and older screens are told and dropped.
+    if (r.mode === "lounge") await r.useScreen("Another screen has taken over. Pair again to cast.");
+    r.replaceScreens(socket.id, "screen");
 
     const h = String(host ?? "");
     // raw IP or localhost: YouTube blocks many videos for pages opened at these
