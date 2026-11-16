@@ -5,6 +5,7 @@ import Room from "../room/RoomPage.tsx";
 import { usePolling } from "./usePolling.ts";
 import { duration, clock } from "./format.ts";
 import { RoomDetail } from "./RoomDetail.tsx";
+import { Dialog } from "../../components/ui/Dialog.tsx";
 
 export function RoomsTab({ run }: { run: Run }) {
   const [rooms, setRooms] = useState<AdminRoomReport[] | null>(null);
@@ -131,31 +132,29 @@ export function RoomsTab({ run }: { run: Run }) {
       </ul>
 
       {confirmDelete && (
-        <div className="dialog-backdrop" onClick={() => setConfirmDelete(null)}>
-          <div className="dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2>Delete room {confirmDelete.code}?</h2>
-            <p className="muted small">
-              Everyone in it is disconnected and its queue is lost ({confirmDelete.queue.length} queued,{" "}
-              {confirmDelete.singers.filter((s) => s.online).length} connected). The play log and room log files are kept.
-            </p>
-            <div className="dialog-actions">
-              <button className="btn" onClick={() => setConfirmDelete(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn danger"
-                onClick={async () => {
-                  const code = confirmDelete.code;
-                  setConfirmDelete(null);
-                  await run(() => api("DELETE", `/rooms/${code}`), `Room ${code} deleted`);
-                  await load();
-                }}
-              >
-                Delete room
-              </button>
-            </div>
+        <Dialog onClose={() => setConfirmDelete(null)}>
+          <h2>Delete room {confirmDelete.code}?</h2>
+          <p className="muted small">
+            Everyone in it is disconnected and its queue is lost ({confirmDelete.queue.length} queued,{" "}
+            {confirmDelete.singers.filter((s) => s.online).length} connected). The play log and room log files are kept.
+          </p>
+          <div className="dialog-actions">
+            <button className="btn" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </button>
+            <button
+              className="btn danger"
+              onClick={async () => {
+                const code = confirmDelete.code;
+                setConfirmDelete(null);
+                await run(() => api("DELETE", `/rooms/${code}`), `Room ${code} deleted`);
+                await load();
+              }}
+            >
+              Delete room
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </section>
   );

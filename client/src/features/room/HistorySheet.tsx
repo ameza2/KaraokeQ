@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { type QueueItem } from "@karaoke/shared";
 import Room from "./RoomPage.tsx";
+import { Sheet } from "../../components/ui/Sheet.tsx";
 
 export const ago = (t?: number) => {
   if (!t) return "";
@@ -33,58 +34,56 @@ export function HistorySheet({
     listRef.current?.scrollTo({ top: 0 });
   };
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet tall" onClick={(e) => e.stopPropagation()}>
-        <h2>Room history</h2>
-        <p className="muted small">Most recent first. Replay adds the song to the back of the queue, sung by you.</p>
-        {items.length === 0 ? (
-          <p className="muted pad">No songs have been played yet.</p>
-        ) : (
-          <ul className="list scroll" ref={listRef}>
-            {shown.map((h) => {
-              const queued = queuedIds.has(h.videoId);
-              return (
-                <li key={h.id} className="song">
-                  <img src={h.thumb} alt="" loading="lazy" />
-                  <div className="song-info">
-                    <div className="song-title">{h.title}</div>
-                    <div className="muted small">
-                      <b>{h.singerName}</b> · {ago(h.playedAt)}
-                    </div>
+    <Sheet onClose={onClose} className="tall">
+      <h2>Room history</h2>
+      <p className="muted small">Most recent first. Replay adds the song to the back of the queue, sung by you.</p>
+      {items.length === 0 ? (
+        <p className="muted pad">No songs have been played yet.</p>
+      ) : (
+        <ul className="list scroll" ref={listRef}>
+          {shown.map((h) => {
+            const queued = queuedIds.has(h.videoId);
+            return (
+              <li key={h.id} className="song">
+                <img src={h.thumb} alt="" loading="lazy" />
+                <div className="song-info">
+                  <div className="song-title">{h.title}</div>
+                  <div className="muted small">
+                    <b>{h.singerName}</b> · {ago(h.playedAt)}
                   </div>
-                  <button
-                    className="btn small primary"
-                    disabled={queued || busy === h.id}
-                    onClick={async () => {
-                      setBusy(h.id);
-                      await onReplay(h);
-                      setBusy(null);
-                    }}
-                  >
-                    {queued ? "Queued" : "Replay"}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {pages > 1 && (
-          <nav className="pager history-pager" aria-label="History pages">
-            <button className="icon-btn" disabled={current === 0} onClick={() => goTo(current - 1)} aria-label="Newer songs">
-              ‹
-            </button>
-            <span className="muted small">
-              {current * HISTORY_PAGE + 1}–{current * HISTORY_PAGE + shown.length} of {items.length} · newest first
-            </span>
-            <button className="icon-btn" disabled={current === pages - 1} onClick={() => goTo(current + 1)} aria-label="Older songs">
-              ›
-            </button>
-          </nav>
-        )}
-        <button className="btn" onClick={onClose}>
-          Close
-        </button>
-      </div>
-    </div>
+                </div>
+                <button
+                  className="btn small primary"
+                  disabled={queued || busy === h.id}
+                  onClick={async () => {
+                    setBusy(h.id);
+                    await onReplay(h);
+                    setBusy(null);
+                  }}
+                >
+                  {queued ? "Queued" : "Replay"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {pages > 1 && (
+        <nav className="pager history-pager" aria-label="History pages">
+          <button className="icon-btn" disabled={current === 0} onClick={() => goTo(current - 1)} aria-label="Newer songs">
+            ‹
+          </button>
+          <span className="muted small">
+            {current * HISTORY_PAGE + 1}–{current * HISTORY_PAGE + shown.length} of {items.length} · newest first
+          </span>
+          <button className="icon-btn" disabled={current === pages - 1} onClick={() => goTo(current + 1)} aria-label="Older songs">
+            ›
+          </button>
+        </nav>
+      )}
+      <button className="btn" onClick={onClose}>
+        Close
+      </button>
+    </Sheet>
   );
 }

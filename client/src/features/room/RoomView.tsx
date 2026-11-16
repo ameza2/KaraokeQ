@@ -23,7 +23,7 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
   const { me, state, isHost, isScreenDevice, hostPowers, canControl, error, connected, toasts, toast, progress, setProgress, socket } = useRoom(code, name, screenMode);
   useTheme(state?.settings.theme, `room:${code}`); // the room's colour preset, chosen by its host
   const [tab, setTab] = useState<"search" | "queue">("search");
-  const [sheet, setSheet] = useState<Sheet>(null);
+  const [sheet, setSheet] = useState<SheetName>(null);
   const [playHere, setPlayHere] = useState(() => screenMode || isPlayerDevice(code));
   const lanHost = useLanHost();
   const [screenReplacedBy, setScreenReplacedBy] = useState<ReplacedBy | null>(null); // what took playback from this device
@@ -324,4 +324,4 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
   );
 }
 
-export type Sheet = null | "menu" | "history" | "share" | "rename" | "host" | "cast";
+export type SheetName = null | "menu" | "history" | "share" | "rename" | "host" | "cast";
