@@ -1,5 +1,6 @@
 import type { RoomRegistry } from "../rooms/index.ts";
 import { createContext, type IO } from "./context.ts";
+import { guardSocket } from "./guard.ts";
 import { hostHandlers } from "./hostHandlers.ts";
 import { playbackHandlers } from "./playbackHandlers.ts";
 import { limitSocketEvents } from "./rateLimit.ts";
@@ -16,6 +17,7 @@ export type { IO, SocketData } from "./context.ts";
 export function registerSocketHandlers(io: IO, rooms: RoomRegistry) {
   io.on("connection", (socket) => {
     limitSocketEvents(socket);
+    guardSocket(socket);
     const ctx = createContext(io, socket, rooms);
     roomHandlers(ctx);
     queueHandlers(ctx);
