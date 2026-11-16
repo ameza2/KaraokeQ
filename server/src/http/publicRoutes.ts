@@ -10,9 +10,12 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
   // by: "client" → the creator gets the host token.
   // by: "screen" → a screen created it; no token. Either way, a room without a host
   // gives host to the first person who joins.
+  const createLimit = rateLimiter(Number(process.env.KARAOKE_ROOM_CREATE_PER_MIN) || 20, 60e3); // rooms per minute per address
   app.post("/api/rooms", (req, res) => {
+    if (!createLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Too many rooms created, wait a minute." });
     const byScreen = req.body?.by === "screen";
     const room = rooms.create();
+    if (!room) return void res.status(503).json({ error: "This server has too many rooms open right now." });
     res.json(byScreen ? { code: room.code } : { code: room.code, hostToken: room.hostToken });
   });
 

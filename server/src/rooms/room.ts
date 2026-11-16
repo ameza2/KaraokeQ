@@ -507,6 +507,7 @@ export class Room {
 
   async dispose() {
     if (this.hostAwayTimer) clearTimeout(this.hostAwayTimer);
+    this.log.closeRoom(this.id);
     await this.screenOutput.dispose();
     await this.cast.dispose();
   }

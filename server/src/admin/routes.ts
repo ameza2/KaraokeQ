@@ -172,6 +172,7 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
 
   router.post("/rooms", (_req, res) => {
     const room = rooms.create();
+    if (!room) return void res.status(409).json({ error: "The server already has the maximum number of rooms." });
     room.say("created from the admin page");
     res.json({ room: report(room) });
   });

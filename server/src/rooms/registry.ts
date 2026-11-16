@@ -9,6 +9,8 @@ type IO = Server<ClientToServer, ServerToClient>;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 
 export class RoomRegistry {
+  /** Live rooms allowed at once (each one holds memory and a play-log file). */
+  static readonly MAX_ROOMS = Number(process.env.KARAOKE_MAX_ROOMS) || 200;
   private rooms = new Map<string, Room>();
 
   constructor(
@@ -27,7 +29,9 @@ export class RoomRegistry {
     }, 10 * 60e3).unref();
   }
 
-  create(): Room {
+  /** A new room, or null when the server already has MAX_ROOMS. */
+  create(): Room | null {
+    if (this.rooms.size >= RoomRegistry.MAX_ROOMS) return null;
     let code: string;
     do {
       code = Array.from(randomBytes(4), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");

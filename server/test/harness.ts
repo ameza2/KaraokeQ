@@ -34,7 +34,7 @@ export async function startServer(env: Record<string, string> = {}): Promise<Tes
   const dataDir = mkdtempSync(path.join(tmpdir(), "karaoke-test-"));
   const child: ChildProcess = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
     cwd: serverDir,
-    env: { ...process.env, PORT: String(port), KARAOKE_DATA_DIR: dataDir, KARAOKE_HOST_AWAY_MS: "700", ...env },
+    env: { ...process.env, PORT: String(port), KARAOKE_DATA_DIR: dataDir, KARAOKE_HOST_AWAY_MS: "700", KARAOKE_ROOM_CREATE_PER_MIN: "10000", ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";

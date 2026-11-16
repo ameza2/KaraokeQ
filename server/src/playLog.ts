@@ -38,6 +38,8 @@ export interface PlayLog {
   openRoom(room: RoomRecord): void;
   /** A song finished (or was skipped) on stage. Fire-and-forget: never throws. */
   record(play: PlayRecord): void;
+  /** The room is gone: no more lines will come, so release what is kept in memory for it. */
+  closeRoom(roomId: string): void;
   /** Every play in a room, oldest first. */
   plays(roomId: string): Promise<PlayRecord[]>;
 }
@@ -93,6 +95,16 @@ export class FilePlayLog implements PlayLog {
 
   record(play: PlayRecord) {
     this.append(play.roomId, { type: "play", ...play });
+  }
+
+  closeRoom(roomId: string) {
+    const pending = this.writes.get(roomId);
+    const release = () => {
+      if (this.writes.get(roomId) !== pending) return; // something was written since: keep it
+      this.writes.delete(roomId);
+      this.files.delete(roomId); // plays() finds the file by name from now on
+    };
+    void (pending ?? Promise.resolve()).then(release, release);
   }
 
   async plays(roomId: string): Promise<PlayRecord[]> {

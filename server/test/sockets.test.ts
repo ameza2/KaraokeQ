@@ -106,3 +106,25 @@ describe("room size", () => {
     void until;
   });
 });
+
+describe("room creation limits", () => {
+  it("rate-limits creation per address and caps the rooms on the server", async () => {
+    const small = await startServer({ KARAOKE_ROOM_CREATE_PER_MIN: "3", KARAOKE_MAX_ROOMS: "100" });
+    try {
+      const post = () => fetch(`${small.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      for (let i = 0; i < 3; i++) assert.equal((await post()).status, 200);
+      assert.equal((await post()).status, 429);
+    } finally {
+      await small.stop();
+    }
+    const capped = await startServer({ KARAOKE_MAX_ROOMS: "2" });
+    try {
+      const post = () => fetch(`${capped.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      assert.equal((await post()).status, 200);
+      assert.equal((await post()).status, 200);
+      assert.equal((await post()).status, 503);
+    } finally {
+      await capped.stop();
+    }
+  });
+});
