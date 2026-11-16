@@ -152,3 +152,19 @@ describe("seeking on the browser screen", () => {
     assert.ok(!times.includes(11), `the stale position must not reach phones (saw ${times.join(", ")})`);
   });
 });
+
+describe("payload fields", () => {
+  it("rejects wrong field types before any handler runs, and still accepts valid ones", async () => {
+    const { code, hostToken } = await createRoom(server.url);
+    const host = newClient("fields-host");
+    await host.join(code, hostToken);
+    const bad = await host.socket.emitWithAck("queue:add", { video: { videoId: 12345678901, title: "x" } } as never);
+    assert.equal(bad.ok, false);
+    const badJoin = await newClient("fields-bad").socket.emitWithAck("room:join", { code, singerId: {}, name: "X" } as never);
+    assert.equal(badJoin.ok, false);
+    const nan = await host.socket.emitWithAck("queue:add", { video: { videoId: "fieldsSong1", title: 5 } } as never);
+    assert.equal(nan.ok, false, "a non-string title is refused, not coerced");
+    const good = await host.add({ videoId: "fieldsSong2", title: "Fine", channel: "c", duration: "3:00", thumb: "" });
+    assert.equal(good.ok, true);
+  });
+});

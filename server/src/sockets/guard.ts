@@ -1,4 +1,5 @@
 import type { AppSocket } from "./context.ts";
+import { PAYLOAD_CHECKS } from "./payloads.ts";
 
 /**
  * Events whose handler answers through an ack callback. Without one the handler would throw
@@ -15,8 +16,8 @@ const reply = (args: unknown[], error: string) => {
 
 /**
  * One bad packet must never take the server (and every room) down. Two layers:
- *  1. a middleware that rejects packets of the wrong shape (every payload in this app is a
- *     plain object, and the events above must carry an ack function);
+ *  1. a middleware that rejects packets of the wrong shape (every payload is a plain object whose
+ *     fields pass the per-event check in payloads.ts, and the events above must carry an ack function);
  *  2. every handler registered afterwards runs inside a try/catch, async ones included, and a
  *     failure is logged and answered with an error ack when the caller is waiting for one.
  * Call this before registering the handler modules.
@@ -26,7 +27,9 @@ export function guardSocket(socket: AppSocket) {
     const ack = args[args.length - 1];
     const payload = typeof ack === "function" ? args.slice(0, -1) : args;
     if (NEEDS_ACK.has(event) && typeof ack !== "function") return; // nobody to answer: drop it
-    if (payload.some((p) => !isObject(p))) {
+    const check = PAYLOAD_CHECKS[event];
+    const shapeOk = payload.every(isObject) && (!check || (isObject(payload[0]) && check(payload[0] as Record<string, unknown>)));
+    if (!shapeOk) {
       console.warn(`socket ${socket.id} sent a malformed "${event}" packet; dropped`);
       return reply(args, "That request was not understood.");
     }
