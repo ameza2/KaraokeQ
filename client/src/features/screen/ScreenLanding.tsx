@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { useLanHost } from "../lib/joinUrl.ts";
-import { getLastScreenRoom } from "../lib/storage.ts";
+import { useLanHost } from "../../lib/joinUrl.ts";
+import { getLastScreenRoom } from "../../lib/storage.ts";
 
 /**
  * /screen — landing page for the TV (or laptop on HDMI). Create a session or join

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { setHostToken } from "../lib/storage.ts";
-import { useLanHost } from "../lib/joinUrl.ts";
+import { setHostToken } from "../../lib/storage.ts";
+import { useLanHost } from "../../lib/joinUrl.ts";
 
 export default function Home() {
   const navigate = useNavigate();

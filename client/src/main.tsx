@@ -1,10 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import Home from "./pages/Home.tsx";
-import Room from "./pages/Room.tsx";
-import ScreenLanding from "./pages/Screen.tsx";
-import Admin from "./pages/Admin.tsx";
+import Home from "./features/home/Home.tsx";
+import RoomPage from "./features/room/RoomPage.tsx";
+import ScreenLanding from "./features/screen/ScreenLanding.tsx";
+import Admin from "./features/admin/AdminPage.tsx";
 import { adoptCarriedIdentity, moveOffIpAddress } from "./lib/hostRedirect.ts";
 import "./styles.css";
 
@@ -18,8 +18,8 @@ void moveOffIpAddress().then((moving) => {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/screen" element={<ScreenLanding />} />
-          <Route path="/r/:code" element={<Room />} />
-          <Route path="/r/:code/screen" element={<Room screenMode />} />
+          <Route path="/r/:code" element={<RoomPage />} />
+          <Route path="/r/:code/screen" element={<RoomPage screenMode />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Home />} />
         </Routes>

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { QueueItem, RoomState, ScreenCommand } from "@karaoke/shared";
-import { qrSrc, useJoinUrl } from "../lib/joinUrl.ts";
-import { connect, type KSocket } from "../lib/socket.ts";
-import Scrubber from "./Scrubber.tsx";
-import { moveOffIpAddress } from "../lib/hostRedirect.ts";
+import { qrSrc, useJoinUrl } from "../../lib/joinUrl.ts";
+import { connect, type KSocket } from "../../lib/socket.ts";
+import Scrubber from "../../components/Scrubber.tsx";
+import { moveOffIpAddress } from "../../lib/hostRedirect.ts";
 
 // Minimal typings for the YouTube IFrame Player API.
 interface YTPlayer {

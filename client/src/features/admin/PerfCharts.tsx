@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MetricHistory, MetricPoint } from "@karaoke/shared";
-import { api, type Run } from "../lib/adminApi.ts";
+import { api, type Run } from "../../lib/adminApi.ts";
 
 /**
  * Server performance over time (admin debug page): one small line chart per

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MODE_LABELS, PAGE_SIZES, type OutputMode, type SearchPage, type VideoResult } from "@karaoke/shared";
-import { load, save } from "../lib/storage.ts";
+import { load, save } from "../../lib/storage.ts";
 
 const MAX = 100;
 
