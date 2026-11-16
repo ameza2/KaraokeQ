@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type FormEvent } from "react";
-import { MODE_LABELS, PAGE_SIZES, type OutputMode, type SearchPage, type VideoResult } from "@karaoke/shared";
+import { MODE_LABELS, PAGE_SIZES, type ApiError, type OutputMode, type SearchPage, type SuggestResponse, type VideoResult } from "@karaoke/shared";
 import { load, save } from "../../lib/storage.ts";
 
 const MAX = 100;
@@ -50,7 +50,7 @@ function Search({
     const ctrl = new AbortController();
     const t = setTimeout(() => {
       fetch(`/api/suggest?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
-        .then((r) => r.json())
+        .then((r): Promise<SuggestResponse> => r.json())
         .then((d) => {
           if (suggestOpenRef.current) setSuggestions((d.suggestions ?? []).slice(0, 6));
         })
@@ -100,8 +100,8 @@ function Search({
     setErr(null);
     fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${needed}&room=${code}`, { signal: ctrl.signal })
       .then(async (res) => {
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error);
+        const body: SearchPage | ApiError = await res.json();
+        if ("error" in body) throw new Error(body.error);
         setData(body);
         if (!body.results.length) setErr("No playable results. Try the artist and song name.");
       })

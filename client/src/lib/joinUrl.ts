@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ServerInfo } from "@karaoke/shared";
 
 /** Raw IP address. */
 export const isIpHost = (h: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.startsWith("[");
@@ -10,10 +11,6 @@ const isLocalName = (h: string) => h === "localhost" || h.endsWith(".localhost")
  */
 export const isRawAddress = (h: string) => isIpHost(h) || isLocalName(h);
 
-export interface ServerInfo {
-  lanIps: string[];
-  shareHost: string | null; // e.g. 192-168-0-5.nip.io
-}
 let info: Promise<ServerInfo> | null = null;
 export const getServerInfo = () =>
   (info ??= fetch("/api/info")

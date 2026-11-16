@@ -36,6 +36,33 @@ export interface SearchPage {
   hidden: number; // results dropped because they can't play on the current output
 }
 
+// ---------- public HTTP API ----------
+// Response bodies of the routes in server/src/http/publicRoutes.ts. The server checks its
+// replies against these (`satisfies`) and the client reads them, so a change breaks both builds.
+
+/** Any failed API call: a status code and `{error}`. */
+export interface ApiError {
+  error: string;
+}
+/** POST /api/rooms. A room made by a screen gets no host token. */
+export interface CreateRoomResponse {
+  code: string;
+  hostToken?: string;
+}
+/** GET /api/rooms/:code */
+export interface RoomExistsResponse {
+  exists: boolean;
+}
+/** GET /api/suggest */
+export interface SuggestResponse {
+  suggestions: string[];
+}
+/** GET /api/info: how other devices should reach the server. */
+export interface ServerInfo {
+  lanIps: string[];
+  shareHost: string | null; // e.g. 192-168-0-5.nip.io
+}
+
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 export const MODE_LABELS: Record<OutputMode, { name: string; hint: string }> = {

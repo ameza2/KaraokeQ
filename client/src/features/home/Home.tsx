@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import type { CreateRoomResponse, RoomExistsResponse } from "@karaoke/shared";
 import { useNavigate, Link } from "react-router-dom";
 import { setHostToken } from "../../lib/storage.ts";
 import { useLanHost } from "../../lib/joinUrl.ts";
@@ -20,8 +21,8 @@ export default function Home() {
         body: JSON.stringify({ by: "client" }),
       });
       if (!res.ok) throw new Error();
-      const { code, hostToken } = await res.json();
-      setHostToken(code, hostToken);
+      const { code, hostToken }: CreateRoomResponse = await res.json();
+      if (hostToken) setHostToken(code, hostToken);
       navigate(`/r/${code}`);
     } catch {
       setError("Couldn't create a room. Is the server running?");
@@ -33,7 +34,7 @@ export default function Home() {
     e.preventDefault();
     const c = code.trim().toUpperCase();
     if (!c) return;
-    const { exists } = await fetch(`/api/rooms/${c}`).then((r) => r.json());
+    const { exists }: RoomExistsResponse = await fetch(`/api/rooms/${c}`).then((r) => r.json());
     if (exists) navigate(`/r/${c}`);
     else setError(`No room with code ${c}.`);
   }

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import type { CreateRoomResponse, RoomExistsResponse, ServerInfo } from "@karaoke/shared";
 import { Client, createRoom, startServer, video, type TestServer } from "./harness.ts";
 
 let server: TestServer;
@@ -137,5 +138,29 @@ describe("API errors answer with JSON", () => {
     assert.equal(res.status, 413);
     const text = await res.text();
     assert.deepEqual(JSON.parse(text), { error: "That request is too large." });
+  });
+});
+
+describe("public API response shapes", () => {
+  const post = (body: object) => fetch(`${server.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  it("POST /api/rooms gives a host token to a client and none to a screen", async () => {
+    const asClient = (await (await post({ by: "client" })).json()) as CreateRoomResponse;
+    assert.match(asClient.code, /^[A-Z0-9]{4,8}$/);
+    assert.equal(typeof asClient.hostToken, "string");
+    const asScreen = (await (await post({ by: "screen" })).json()) as CreateRoomResponse;
+    assert.equal(asScreen.hostToken, undefined);
+  });
+
+  it("GET /api/rooms/:code says whether the room exists", async () => {
+    const { code } = (await (await post({ by: "client" })).json()) as CreateRoomResponse;
+    assert.deepEqual((await (await fetch(`${server.url}/api/rooms/${code}`)).json()) as RoomExistsResponse, { exists: true });
+    assert.deepEqual((await (await fetch(`${server.url}/api/rooms/NOPE0`)).json()) as RoomExistsResponse, { exists: false });
+  });
+
+  it("GET /api/info lists the LAN addresses and the shareable host", async () => {
+    const info = (await (await fetch(`${server.url}/api/info`)).json()) as ServerInfo;
+    assert.ok(Array.isArray(info.lanIps) && info.lanIps.every((ip) => typeof ip === "string"));
+    assert.ok(info.shareHost === null || typeof info.shareHost === "string");
   });
 });

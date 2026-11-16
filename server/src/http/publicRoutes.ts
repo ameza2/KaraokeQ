@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import type { ApiError, CreateRoomResponse, RoomExistsResponse, ServerInfo, SuggestResponse } from "@karaoke/shared";
 import QRCode from "qrcode";
 import type { RoomRegistry } from "../rooms/index.ts";
 import type { PlayLog } from "../playLog.ts";
@@ -12,11 +13,11 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
   // gives host to the first person who joins.
   const createLimit = rateLimiter(Number(process.env.KARAOKE_ROOM_CREATE_PER_MIN) || 20, 60e3); // rooms per minute per address
   app.post("/api/rooms", (req, res) => {
-    if (!createLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Too many rooms created, wait a minute." });
+    if (!createLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Too many rooms created, wait a minute." } satisfies ApiError);
     const byScreen = req.body?.by === "screen";
     const room = rooms.create();
-    if (!room) return void res.status(503).json({ error: "This server has too many rooms open right now." });
-    res.json(byScreen ? { code: room.code } : { code: room.code, hostToken: room.hostToken });
+    if (!room) return void res.status(503).json({ error: "This server has too many rooms open right now." } satisfies ApiError);
+    res.json((byScreen ? { code: room.code } : { code: room.code, hostToken: room.hostToken }) satisfies CreateRoomResponse);
   });
 
   // The room's full play history (every song, oldest first). Singers' list shows the last 30.
@@ -28,12 +29,12 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
   });
 
   app.get("/api/rooms/:code", (req, res) => {
-    res.json({ exists: !!rooms.get(req.params.code) });
+    res.json({ exists: !!rooms.get(req.params.code) } satisfies RoomExistsResponse);
   });
 
   const searchLimit = rateLimiter(30, 60e3); // paging counts too
   app.get("/api/search", async (req, res) => {
-    if (!searchLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Slow down — too many searches." });
+    if (!searchLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Slow down — too many searches." } satisfies ApiError);
     try {
       // Filter by what the room's current output can play (default: web player).
       const room = rooms.get(String(req.query.room ?? ""));
@@ -41,23 +42,23 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
       res.json(await searchVideos(String(req.query.q ?? ""), Number(req.query.limit ?? 25), playableOnly));
     } catch (err) {
       console.error("search failed:", err);
-      res.status(502).json({ error: "Search is temporarily unavailable. Try again in a moment." });
+      res.status(502).json({ error: "Search is temporarily unavailable. Try again in a moment." } satisfies ApiError);
     }
   });
 
   const suggestLimit = rateLimiter(60, 60e3);
   app.get("/api/suggest", async (req, res) => {
-    if (!suggestLimit(req.ip ?? "?")) return void res.json({ suggestions: [] });
+    if (!suggestLimit(req.ip ?? "?")) return void res.json({ suggestions: [] } satisfies SuggestResponse);
     try {
-      res.json({ suggestions: await suggest(String(req.query.q ?? "")) });
+      res.json({ suggestions: await suggest(String(req.query.q ?? "")) } satisfies SuggestResponse);
     } catch {
-      res.json({ suggestions: [] });
+      res.json({ suggestions: [] } satisfies SuggestResponse);
     }
   });
 
   // How other devices should reach us: a hostname when one works (see net.ts), else LAN IPs.
   app.get("/api/info", (_req, res) => {
-    res.json({ lanIps: lanIps(), shareHost: getShareHost() });
+    res.json({ lanIps: lanIps(), shareHost: getShareHost() } satisfies ServerInfo);
   });
 
   app.get("/api/qr", async (req, res) => {
