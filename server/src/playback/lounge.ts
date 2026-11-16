@@ -26,6 +26,7 @@ const LOST_AFTER_MS = 45_000;
 const START_TIMEOUT_MS = 25_000;
 const POLL_NOW_PLAYING_MS = 3_000;
 const SWITCH_GRACE_MS = 20_000; // after sending a song, events about other videos are the old one
+const PENDING_MS = 6_000; // how long a pause/resume waits for the TV to confirm it
 const IDLE_AFTER_MS = 4_000; // "stopped" must last this long before we treat the TV as idle
 
 export interface CastTarget {
@@ -371,7 +372,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     // The TV's periodic "nowPlaying" updates carry the position but no state: they keep
     // the progress bar moving (the phones only interpolate for a few seconds).
     if (!hasState) {
-      if (t.started && Number.isFinite(time)) this.emit("progress", { itemId: id, time: t.time, duration: t.duration });
+      if (t.started && Number.isFinite(time)) this.emitProgress(id, t.time, t.duration);
       return;
     }
     if (state === 1 || state === 2 || state === 3) {
@@ -383,9 +384,9 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
           if (cur!.pauseOnStart) void this.send("pause").catch(() => {});
         }
       } else if (t.started && state !== 3) {
-        this.emit("remote-state", state === 1 ? "playing" : "paused");
+        this.remoteState(state === 1);
       }
-      if (t.started) this.emit("progress", { itemId: id, time: t.time, duration: t.duration });
+      if (t.started) this.emitProgress(id, t.time, t.duration);
     } else if (state === 0) {
       if (t.started) this.stopped(true, ours ? cur! : this.ext!);
     } else if (state === -1 && t.started) {
@@ -461,6 +462,8 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
 
   async play(item: QueueItem, opts: PlayOptions = {}): Promise<void> {
     this.finish();
+    this.settle();
+    this.clearSeek();
     this.ext = null;
     this.cancelIdle();
     this.tvVideoId = "";
@@ -472,13 +475,69 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     await this.send("getNowPlaying").catch(() => {});
   }
   async pause() {
-    await this.send("pause").catch(() => {});
+    this.expectState(false);
+    await this.send("pause").catch(() => this.settle());
   }
   async resume() {
-    await this.send("play").catch(() => {});
+    this.expectState(true);
+    await this.send("play").catch(() => this.settle());
+  }
+
+  // A pause/resume takes a moment to reach the TV. Until it confirms, state reports that still
+  // show the old state are stale: ignore them, or the room flips back and then forward again.
+  private expect: { playing: boolean; at: number; timer: NodeJS.Timeout } | null = null;
+  private expectState(playing: boolean) {
+    if (this.expect) clearTimeout(this.expect.timer);
+    const timer = setTimeout(() => {
+      console.warn(`lounge[${this.name}] the TV didn't confirm ${playing ? "play" : "pause"} in ${PENDING_MS}ms; re-reading its state`);
+      this.settle();
+      void this.syncNow();
+    }, PENDING_MS);
+    timer.unref();
+    this.expect = { playing, at: Date.now(), timer };
+  }
+  private settle() {
+    if (!this.expect) return;
+    clearTimeout(this.expect.timer);
+    this.expect = null;
+    this.emit("settled");
+  }
+  private remoteState(playing: boolean) {
+    const e = this.expect;
+    if (!e) return void this.emit("remote-state", playing ? "playing" : "paused");
+    if (playing !== e.playing) return; // from before our command landed
+    console.log(`lounge[${this.name}] TV confirmed ${playing ? "play" : "pause"} after ${Date.now() - e.at}ms`);
+    this.settle();
   }
   async seek(seconds: number) {
-    await this.send("seekTo", { newTime: String(Math.max(0, Math.floor(seconds))) }).catch(() => {});
+    const target = Math.max(0, Math.floor(seconds));
+    this.expectSeek(target);
+    await this.send("seekTo", { newTime: String(target) }).catch(() => this.clearSeek());
+  }
+
+  // Same idea as pause/resume: until the TV reports a position near the seek target, its
+  // reports are from before the jump and would pull the progress bar back.
+  private seekExpect: { target: number; at: number; timer: NodeJS.Timeout } | null = null;
+  private expectSeek(target: number) {
+    this.clearSeek();
+    const timer = setTimeout(() => (this.seekExpect = null), PENDING_MS);
+    timer.unref();
+    this.seekExpect = { target, at: Date.now(), timer };
+  }
+  private clearSeek() {
+    if (this.seekExpect) clearTimeout(this.seekExpect.timer);
+    this.seekExpect = null;
+  }
+  private emitProgress(itemId: string, time: number, duration: number) {
+    const s = this.seekExpect;
+    if (s) {
+      // near the target, or near where playing on from it would be by now (a paused video stays put)
+      const ahead = s.target + (Date.now() - s.at) / 1000;
+      if (Math.min(Math.abs(time - s.target), Math.abs(time - ahead)) > 4) return;
+      console.log(`lounge[${this.name}] TV confirmed seek after ${Date.now() - s.at}ms`);
+      this.clearSeek();
+    }
+    this.emit("progress", { itemId, time, duration });
   }
   async stop() {
     this.finish();
@@ -491,6 +550,9 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     this.finish();
     if (this.lostTimer) clearTimeout(this.lostTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
+    if (this.expect) clearTimeout(this.expect.timer);
+    this.expect = null;
+    this.clearSeek();
     this.cancelIdle();
     this.abort.abort();
     this.connected = false;

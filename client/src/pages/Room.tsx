@@ -165,6 +165,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
       <NowPlaying
         item={state.nowPlaying}
         paused={state.paused}
+        pending={state.pausePending}
         isHost={canControl}
         canSkip={canControl || state.nowPlaying?.singerId === me}
         time={playback.time}
@@ -409,6 +410,7 @@ function HostSeek({
 function NowPlaying(p: {
   item: QueueItem | null;
   paused: boolean;
+  pending: boolean; // the cast is still applying the last pause/resume
   isHost: boolean;
   canSkip: boolean; // allowed to skip this song
   time: number;
@@ -461,7 +463,7 @@ function NowPlaying(p: {
           </button>
         )}
 
-          <button className="icon-btn" onClick={p.onPause} aria-label={p.paused ? "Resume" : "Pause"}>
+          <button className="icon-btn" onClick={p.onPause} disabled={p.pending} aria-busy={p.pending} aria-label={p.paused ? "Resume" : "Pause"}>
             {p.paused ? "▶" : "❚❚"}
           </button>
 

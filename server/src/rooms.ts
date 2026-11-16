@@ -266,6 +266,7 @@ export class Room {
       mode: this.mode,
       nowPlaying: this.nowPlaying,
       paused: this.paused,
+      pausePending: this.pausePending,
       queue: this.queue,
       singers: [...this.singers.values()].map((s) => ({ id: s.id, name: s.name, online: s.sockets.size > 0, ...(s.screen ? { screen: true } : {}) })),
       screens: this.screens.size,
@@ -504,10 +505,17 @@ export class Room {
     this.reportProgress({ itemId: this.nowPlaying.id, time: t, duration });
   }
 
+  /** The cast is still applying the last pause/resume; further toggles wait for the TV. */
+  pausePending = false;
+  private castToggle() {
+    if (this.mode === "lounge") this.pausePending = true;
+  }
+
   pause() {
-    if (!this.nowPlaying || this.paused) return;
+    if (!this.nowPlaying || this.paused || this.pausePending) return;
     this.freezeProgress();
     this.paused = true;
+    this.castToggle();
     void this.output.pause();
     this.broadcast();
   }
@@ -515,9 +523,10 @@ export class Room {
   resume() {
     // Nothing on stage but songs waiting (the TV went back to its home screen): start the queue.
     if (!this.nowPlaying && this.queue.length) return this.advance();
-    if (!this.nowPlaying || !this.paused) return;
+    if (!this.nowPlaying || !this.paused || this.pausePending) return;
     this.paused = false;
     if (this.progress && this.playbackLive()) this.progressAt = Date.now();
+    this.castToggle();
     void this.output.resume();
     this.broadcast();
   }
@@ -585,6 +594,11 @@ export class Room {
     lounge.on("progress", (p: Progress) => this.reportProgress(p.itemId === "external" && this.nowPlaying?.external ? { ...p, itemId: this.nowPlaying.id } : p));
     // someone used the TV remote: follow it instead of fighting it
     lounge.on("remote-state", (s: "playing" | "paused") => this.syncPaused(s === "paused"));
+    lounge.on("settled", () => {
+      if (!this.pausePending) return;
+      this.pausePending = false;
+      this.broadcast();
+    });
     // The TV started another video by itself: show it as the current video. Someone chose
     // that on purpose, so the song it replaced is dropped; the queue carries on after it.
     lounge.on("external", (videoId: string) => this.takeOver(videoId));
@@ -671,6 +685,7 @@ export class Room {
   private async dropLounge() {
     const old = this.lounge;
     this.lounge = null;
+    this.pausePending = false;
     if (old && castOwners.get(old.screen.screenId) === this) castOwners.delete(old.screen.screenId);
     await old?.dispose();
   }

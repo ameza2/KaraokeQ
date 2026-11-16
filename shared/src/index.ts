@@ -78,6 +78,8 @@ export interface RoomState {
   settings: RoomSettings;
   /** The host has had no connected device for a while: any singer may claim host. */
   hostClaimable: boolean;
+  /** The YouTube cast is still applying a pause/resume: phones disable the button until the TV confirms. */
+  pausePending: boolean;
   /** The YouTube cast, paired through the TV's "Link with TV code" (mode "lounge" while it's the output). */
   cast: { name: string; connected: boolean } | null;
 }
