@@ -15,6 +15,7 @@ import { SiteSettings } from "./siteSettings.ts";
 import { AdminAuth, FileCredentialStore } from "./admin/credentials.ts";
 import { adminRouter } from "./admin/routes.ts";
 import { Metrics } from "./metrics.ts";
+import { castLog } from "./playback/lounge.ts";
 
 // Capture console output into the log files before anything else logs.
 const logger = new Logger(dataDir());
@@ -31,6 +32,7 @@ const playLog = new FilePlayLog(dataDir());
 console.log(`data folder: ${dataDir()} (play log, logs, settings, admin login)`);
 const rooms = new RoomRegistry(io, playLog);
 const siteSettings = new SiteSettings(dataDir());
+castLog.verbose = siteSettings.verboseCastLog;
 const credentials = new FileCredentialStore(dataDir());
 // Performance history for the admin debug page (one sample a minute, 7 days).
 const metrics = new Metrics(dataDir(), () => {

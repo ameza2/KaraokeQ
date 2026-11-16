@@ -10,13 +10,15 @@ import { DEFAULT_THEME, THEMES, type ThemeName } from "@karaoke/shared";
  */
 export interface SiteSettingsData {
   adminTheme: ThemeName;
+  /** Log every YouTube cast command and TV event (admin Debug tab). */
+  verboseCastLog: boolean;
 }
 
 export const isTheme = (x: unknown): x is ThemeName => typeof x === "string" && (THEMES as readonly string[]).includes(x);
 
 export class SiteSettings {
   private readonly file: string;
-  private data: SiteSettingsData = { adminTheme: DEFAULT_THEME };
+  private data: SiteSettingsData = { adminTheme: DEFAULT_THEME, verboseCastLog: false };
 
   constructor(dataDir: string) {
     this.file = path.join(dataDir, "settings.json");
@@ -24,6 +26,7 @@ export class SiteSettings {
     try {
       const saved = JSON.parse(readFileSync(this.file, "utf8"));
       if (isTheme(saved?.adminTheme)) this.data.adminTheme = saved.adminTheme;
+      if (typeof saved?.verboseCastLog === "boolean") this.data.verboseCastLog = saved.verboseCastLog;
     } catch {
       // no file yet (or unreadable): defaults
     }
@@ -33,8 +36,21 @@ export class SiteSettings {
     return this.data.adminTheme;
   }
 
+  get verboseCastLog() {
+    return this.data.verboseCastLog;
+  }
+
   async setAdminTheme(adminTheme: ThemeName) {
-    this.data = { adminTheme };
+    this.data = { ...this.data, adminTheme };
+    await this.save();
+  }
+
+  async setVerboseCastLog(verboseCastLog: boolean) {
+    this.data = { ...this.data, verboseCastLog };
+    await this.save();
+  }
+
+  private async save() {
     const tmp = `${this.file}.tmp`;
     await writeFile(tmp, JSON.stringify(this.data, null, 2) + "\n", "utf8");
     await rename(tmp, this.file);

@@ -8,6 +8,7 @@ import type { PlayLog } from "../playLog.ts";
 import type { Room, RoomRegistry } from "../rooms.ts";
 import { rateLimiter } from "../search.ts";
 import { isTheme, type SiteSettings } from "../siteSettings.ts";
+import { castLog } from "../playback/lounge.ts";
 import { AdminAuth } from "./credentials.ts";
 import type { Metrics } from "../metrics.ts";
 
@@ -238,6 +239,16 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
   });
 
   // ----- debug -----
+
+  // Log every YouTube cast command and TV event (otherwise only the important ones).
+  router.get("/cast-log", (_req, res) => res.json({ verbose: castLog.verbose }));
+  router.put("/cast-log", async (req, res) => {
+    if (typeof req.body?.verbose !== "boolean") return void res.status(400).json({ error: "verbose must be true or false." });
+    castLog.verbose = req.body.verbose;
+    await settings.setVerboseCastLog(req.body.verbose);
+    console.log(`admin: verbose cast logging ${req.body.verbose ? "on" : "off"}`);
+    res.json({ verbose: castLog.verbose });
+  });
 
   let lastCpu = { at: Date.now(), usage: process.cpuUsage() };
   router.get("/stats", async (_req, res) => {

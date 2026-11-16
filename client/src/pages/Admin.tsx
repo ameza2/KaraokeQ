@@ -672,6 +672,10 @@ function AppearanceTab({ run, theme, onChange }: { run: Run; theme: ThemeName; o
 
 function DebugTab({ run }: { run: Run }) {
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [castVerbose, setCastVerbose] = useState<boolean | null>(null);
+  useEffect(() => {
+    void run(() => api<{ verbose: boolean }>("GET", "/cast-log")).then((r) => r && setCastVerbose(r.verbose));
+  }, [run]);
   const [scope, setScope] = useState("system"); // "system" or a room code
   const [level, setLevel] = useState<"all" | "warn" | "error">("all");
   const [limit, setLimit] = useState(200);
@@ -731,6 +735,23 @@ function DebugTab({ run }: { run: Run }) {
           Data folder: <code>{stats.dataDir}</code> (logs are in <code>logs/</code>, never in a database)
         </p>
       )}
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!!castVerbose}
+          disabled={castVerbose === null}
+          onChange={async (e) => {
+            const verbose = e.target.checked;
+            const r = await run(() => api<{ verbose: boolean }>("PUT", "/cast-log", { verbose }));
+            if (r) setCastVerbose(r.verbose);
+          }}
+        />
+        <span>
+          Verbose YouTube cast log
+          <span className="small"> Log every command sent to the TV and every event it reports (very chatty; for debugging).</span>
+        </span>
+      </label>
 
       <PerfCharts run={run} />
 

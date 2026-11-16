@@ -26,6 +26,12 @@ const LOST_AFTER_MS = 45_000;
 const START_TIMEOUT_MS = 25_000;
 const POLL_NOW_PLAYING_MS = 3_000;
 const SWITCH_GRACE_MS = 20_000; // after sending a song, events about other videos are the old one
+/**
+ * Verbose cast logging (admin Debug tab): every command and every TV event. Off by default,
+ * because the 3s poll alone fills the log; the normal log keeps song sends, stops, confirmations and warnings.
+ */
+export const castLog = { verbose: false };
+
 const PENDING_MS = 6_000; // how long a pause/resume waits for the TV to confirm it
 const IDLE_AFTER_MS = 4_000; // "stopped" must last this long before we treat the TV as idle
 
@@ -266,7 +272,9 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     }
     if (!res.ok) throw new Error(`command ${command} failed (${res.status})`);
     const text = await res.text().catch(() => "");
-    console.log(`lounge[${this.name}] sent ${command} ${JSON.stringify(args)} -> ${res.status} ${text.slice(0, 200).replace(/\s+/g, " ")}`);
+    if (castLog.verbose || command === "setPlaylist" || command === "stopVideo") {
+      console.log(`lounge[${this.name}] sent ${command} ${JSON.stringify(args)} -> ${res.status} ${text.slice(0, 200).replace(/\s+/g, " ")}`);
+    }
     // the reply to a command can carry events too
     this.consume(new ChunkParser().push(text));
   }
@@ -296,7 +304,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
       if (typeof idx === "number" && idx > this.aid) this.aid = idx;
       const [name, data] = ev as [string, any];
       this.emit("raw", name, data);
-      if (!["noop", "c", "S", "onVideoQualityChanged", "onAudioTrackChanged", "onHasPreviousNextChanged", "autoplayUpNext", "onAutoplayModeChanged", "onVolumeChanged", "onSubtitlesTrackChanged"].includes(name)) console.log(`lounge[${this.name}] event #${idx} ${name} ${JSON.stringify(data)?.slice(0, 300)}`);
+      if (castLog.verbose && !["noop", "c", "S", "onVideoQualityChanged", "onAudioTrackChanged", "onHasPreviousNextChanged", "autoplayUpNext", "onAutoplayModeChanged", "onVolumeChanged", "onSubtitlesTrackChanged"].includes(name)) console.log(`lounge[${this.name}] event #${idx} ${name} ${JSON.stringify(data)?.slice(0, 300)}`);
       switch (name) {
         case "c":
           this.sid = String(data);
