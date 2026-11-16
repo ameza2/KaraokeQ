@@ -63,6 +63,8 @@ try {
   await shot(page, "03-queue");
   const rows = await page.$$eval(".queue li, ol li, ul.queue li", (l) => l.length);
   check("queue shows songs", rows >= 3, `rows=${rows}`);
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check("no horizontal overflow (room, 420px)", (await overflow()) <= 0, `${await overflow()}px wider than the screen`);
 
   // drag reorder: grab the last grip, move it to the top
   const grips = await page.$$(".grip");
@@ -105,6 +107,7 @@ try {
     await sleep(300);
     const seen = await page.evaluate((p) => document.body.textContent.includes(p), probe);
     check(`menu → ${label}`, opened && seen);
+    check(`no horizontal overflow (${label})`, (await overflow()) <= 0, `${await overflow()}px`);
     await shot(page, "06-" + label.replace(/\W+/g, "-"));
     await page.keyboard.press("Escape");
     // close whatever is open: click backdrop, else reopen menu path
