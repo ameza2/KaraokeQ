@@ -1,5 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { writeFileAtomic } from "../atomicWrite.ts";
 import path from "node:path";
 
 /**
@@ -59,9 +60,7 @@ export class FileCredentialStore implements CredentialStore {
 
   async save(record: CredentialRecord) {
     await mkdir(path.dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.tmp`;
-    await writeFile(tmp, JSON.stringify(record, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
-    await rename(tmp, this.file);
+    await writeFileAtomic(this.file, JSON.stringify(record, null, 2) + "\n", 0o600);
   }
 }
 

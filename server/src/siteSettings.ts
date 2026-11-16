@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { writeFileAtomic } from "./atomicWrite.ts";
 import { DEFAULT_THEME, THEMES, type ThemeName } from "@karaoke/shared";
 
 /**
@@ -51,8 +51,6 @@ export class SiteSettings {
   }
 
   private async save() {
-    const tmp = `${this.file}.tmp`;
-    await writeFile(tmp, JSON.stringify(this.data, null, 2) + "\n", "utf8");
-    await rename(tmp, this.file);
+    await writeFileAtomic(this.file, JSON.stringify(this.data, null, 2) + "\n");
   }
 }
