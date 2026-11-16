@@ -1,5 +1,10 @@
-import { Innertube, YTNodes } from "youtubei.js";
+import { Innertube, Log, YTNodes } from "youtubei.js";
 import type { SearchPage, VideoResult } from "@karaoke/shared";
+
+// The parser logs a warning for every node type YouTube has changed ("Type mismatch, got
+// DecoratedAvatarView expected AvatarView", dozens per search). Searching still works, so keep
+// only real errors out of the system log.
+Log.setLevel(Log.Level.ERROR);
 
 export const MAX_RESULTS = 100;
 const MAX_PAGES = 12; // YouTube returns ~20 per page; leave headroom for filtering
