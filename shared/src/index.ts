@@ -76,6 +76,8 @@ export interface RoomState {
   /** Device id of the room's active screen. That device gets the host's permissions. */
   screenId: string | null; // singerId of the current host (null until someone claims a TV room)
   settings: RoomSettings;
+  /** The host has had no connected device for a while: any singer may claim host. */
+  hostClaimable: boolean;
   /** The YouTube cast, paired through the TV's "Link with TV code" (mode "lounge" while it's the output). */
   cast: { name: string; connected: boolean } | null;
 }
@@ -125,6 +127,8 @@ export interface ClientToServer {
   "playback:resume": () => void;
   "playback:seek": (p: { seconds: number }) => void;
   "host:transfer": (p: { singerId: string }, ack: (r: Ack) => void) => void;
+  /** Any singer: take host once the host has been fully disconnected for 5 minutes. */
+  "host:claim": (ack: (r: Ack) => void) => void;
   "settings:update": (p: Partial<RoomSettings>) => void;
   /** Host/screen: pair the TV's YouTube app with the 12-digit "Link with TV code" and play there. */
   "cast:pair": (p: { code: string }, ack: (r: Ack<{ name: string }>) => void) => void;

@@ -185,6 +185,21 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
         />
       )}
 
+      {state.hostClaimable && !hostPowers && (
+        <div className="banner">
+          The host has been away for over 5 minutes, so nobody can change settings or hand the room over.{" "}
+          <button
+            className="link inline"
+            onClick={() =>
+              s.emit("host:claim", (r) => {
+                if (!r.ok) toast({ level: "error", message: r.error });
+              })
+            }
+          >
+            Claim host
+          </button>
+        </div>
+      )}
       {casting && state.cast && !state.cast.connected && (
         <div className="banner">
           The YouTube cast lost its connection to {state.cast.name}. It keeps trying, and the TV keeps playing its current video.

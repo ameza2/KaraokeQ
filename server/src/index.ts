@@ -239,6 +239,15 @@ io.on("connection", (socket) => {
     ack({ ok: true });
   });
 
+  // ----- any singer -----
+  socket.on("host:claim", (ack) => {
+    const r = room();
+    const id = socket.data.singerId;
+    if (!r || !id) return ack({ ok: false, error: "Join the room first." });
+    if (!r.claimHost(id)) return ack({ ok: false, error: "The host is connected, or hasn't been away long enough." });
+    ack({ ok: true });
+  });
+
   socket.on("settings:update", (patch) => {
     const r = room();
     if (r?.hasHostPowers(socket.data.singerId)) r.updateSettings(patch ?? {});

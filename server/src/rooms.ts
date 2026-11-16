@@ -40,6 +40,40 @@ export class Room {
   /** Device id of the active screen (see hasHostPowers). */
   screenSinger: string | null = null;
 
+  /** How long the host must be fully disconnected before anyone may claim host. */
+  static readonly HOST_AWAY_MS = Number(process.env.KARAOKE_HOST_AWAY_MS) || 5 * 60_000;
+  private hostAwaySince: number | null = null;
+  private hostAwayTimer: NodeJS.Timeout | null = null;
+
+  /** Track whether the host has any connected device; call after any connect, disconnect or host change. */
+  private watchHost() {
+    if (this.hostAwayTimer) clearTimeout(this.hostAwayTimer);
+    this.hostAwayTimer = null;
+    if (!this.hostId || (this.singers.get(this.hostId)?.sockets.size ?? 0) > 0) {
+      this.hostAwaySince = null;
+      return;
+    }
+    this.hostAwaySince ??= Date.now();
+    const wait = this.hostAwaySince + Room.HOST_AWAY_MS - Date.now();
+    if (wait > 0) {
+      // tell everyone when the host becomes claimable
+      this.hostAwayTimer = setTimeout(() => this.broadcast(), wait + 50);
+      this.hostAwayTimer.unref();
+    }
+  }
+
+  get hostClaimable() {
+    return this.hostAwaySince !== null && Date.now() - this.hostAwaySince >= Room.HOST_AWAY_MS;
+  }
+
+  /** A singer takes host because the host has been away for 5 minutes or more. */
+  claimHost(singerId: string): boolean {
+    const me = this.singers.get(singerId);
+    if (!me || me.screen || me.sockets.size === 0 || singerId === this.hostId || !this.hostClaimable) return false;
+    this.say(`host claimed by ${me.name}: the host was away for ${Math.round((Date.now() - (this.hostAwaySince ?? Date.now())) / 60_000)} min`);
+    return this.assignHost(singerId, singerId);
+  }
+
   isHost(singerId: string | undefined) {
     return !!singerId && singerId === this.hostId;
   }
@@ -60,6 +94,8 @@ export class Room {
     if (!to || to.screen || toSingerId === this.hostId) return null;
     this.hostId = toSingerId;
     this.hostToken = randomBytes(16).toString("hex");
+    this.hostAwaySince = null;
+    this.watchHost();
     this.broadcast();
     return this.hostToken;
   }
@@ -224,6 +260,7 @@ export class Room {
       hostId: this.hostId,
       screenId: this.screens.size > 0 ? this.screenSinger : null,
       settings: this.settings,
+      hostClaimable: this.hostClaimable,
       cast: this.lounge ? { name: this.lounge.name, connected: this.lounge.connected } : null,
     };
   }
@@ -243,6 +280,7 @@ export class Room {
     s.screen = screen;
     s.sockets.add(socketId);
     this.singers.set(id, s);
+    this.watchHost();
     // keep display names on queued items in sync
     for (const item of this.queue) if (item.singerId === id) item.singerName = name;
     if (this.nowPlaying?.singerId === id) this.nowPlaying.singerName = name;
@@ -270,6 +308,7 @@ export class Room {
       this.screenSinger = null;
     }
     for (const s of this.singers.values()) s.sockets.delete(socketId);
+    this.watchHost();
   }
 
   /**
@@ -634,6 +673,7 @@ export class Room {
   }
 
   async dispose() {
+    if (this.hostAwayTimer) clearTimeout(this.hostAwayTimer);
     await this.screenOutput.dispose();
     await this.dropLounge();
   }
