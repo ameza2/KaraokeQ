@@ -217,8 +217,10 @@ YouTube refuses many videos (music labels especially: "uploader blocked embeddin
 ```
 shared/   types shared by server and client (socket events, RoomState, QueueItem)
 server/   Express + Socket.IO
-  src/index.ts            HTTP routes and socket handlers (permission checks)
-  src/rooms.ts            rooms: queue, fair ordering, host/screen permissions, playback clock, history
+  src/index.ts            wiring: Express, Socket.IO, logging, metrics
+  src/http/               public HTTP API and the built-client fallback
+  src/sockets/            socket handlers by area (room, queue, playback, host, screen)
+  src/rooms/              Room (queue, fair ordering, permissions, playback clock), registry, YouTube cast, embed-block rules
   src/search.ts           youtubei.js search + suggestions (no API quota), caching, rate limit
   src/net.ts              LAN IP + shareable hostname (nip.io / sslip.io)
   src/playLog.ts          play log (PlayLog interface + JSON-lines file store)
@@ -226,16 +228,13 @@ server/   Express + Socket.IO
   src/siteSettings.ts     admin-page settings (its colour preset)
   src/metrics.ts          performance history: one sample a minute, 7 days
   src/admin/              admin login (scrypt credential file) and the /api/admin routes
-  src/playback/           PlaybackOutput interface; ScreenOutput (browser screen); LoungeOutput (stub)
+  src/playback/           PlaybackOutput interface; ScreenOutput (browser screen); LoungeOutput (YouTube cast)
+  test/                   socket integration tests (npm test)
 client/   React + Vite
-  src/pages/Home.tsx      default landing: start / join
-  src/pages/Screen.tsx    screen landing: create / join as the screen
-  src/pages/Room.tsx      room page: now playing, controls, queue, menu
-  src/pages/Search.tsx    search + autocomplete
-  src/pages/Admin.tsx     admin area: sign-in, rooms, appearance, debug, account
-  src/lib/theme.ts        applies a colour preset (the room's, or the admin's)
-  src/components/PerfCharts.tsx  performance charts on the admin debug tab
-  src/components/ScreenPlayer.tsx  YouTube player, full screen + controls
+  src/features/           one folder per area: home, screen, room, search, admin
+  src/components/ui/      shared Sheet, Dialog and ToggleItem
+  src/lib/                socket hook, storage, URLs, colour preset (theme.ts)
+  src/styles/             CSS split by area; index.css sets the load order
 data/     runtime files, git-ignored: rooms/ (play log), logs/, metrics/, admin/ (login), settings.json
 ```
 
