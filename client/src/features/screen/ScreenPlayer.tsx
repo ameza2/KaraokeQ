@@ -3,8 +3,9 @@ import type { QueueItem, RoomState, ScreenCommand } from "@karaoke/shared";
 import { qrSrc, useJoinUrl } from "../../lib/joinUrl.ts";
 import { connect, type KSocket } from "../../lib/socket.ts";
 import Scrubber from "../../components/Scrubber.tsx";
-import { moveOffIpAddress } from "../../lib/hostRedirect.ts";
-import { takenOverText, type ReplacedBy } from "./takeover.ts";
+import { BlockedOverlay, IdleScreen, ReplacedNotice, type BlockInfo } from "./ScreenOverlays.tsx";
+import type { ReplacedBy } from "./takeover.ts";
+import { useFullscreen } from "./useFullscreen.ts";
 
 // Minimal typings for the YouTube IFrame Player API.
 interface YTPlayer {
@@ -99,12 +100,11 @@ export default function ScreenPlayer({
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [blocked, setBlocked] = useState(false); // browser refused to autoplay
-  const [full, setFull] = useState(autoFull);
   // YouTube blocks the current video at this page's raw-IP address (it plays fine by hostname)
-  const [ipBlocked, setIpBlocked] = useState<{ itemId: string; shareHost: string | null; reason: "ip" | "device" | "limit" } | null>(null);
+  const [ipBlocked, setIpBlocked] = useState<BlockInfo | null>(null);
   const playedRef = useRef<string | null>(null); // the item that reached the playing state (an error after that isn't an embed block)
-  const [reopenFailed, setReopenFailed] = useState(false); // embedded player shown full screen
   const rootEl = useRef<HTMLDivElement>(null);
+  const { full, setFull, enterNative: enterNativeFull, toggle: toggleFull, exit: exitFullscreen } = useFullscreen(rootEl, autoFull);
   const target = useRef<{ itemId: string; startAt: number } | null>(null); // where playback should begin
   const shouldPlay = useRef(false);
 
@@ -223,7 +223,6 @@ export default function ScreenPlayer({
     s.on("screen:blocked", (b) => {
       shouldPlay.current = false; // don't also ask for a "tap to play"
       setBlocked(false);
-      setReopenFailed(false);
       setIpBlocked(b);
     });
     s.on("screen:replaced", (by) => {
@@ -334,10 +333,7 @@ export default function ScreenPlayer({
   useEffect(() => {
     onReplacedChange?.(replaced, replacedBy);
     if (!replaced) return;
-    // Leave full screen: the player is hidden now, and a fullscreen hidden element
-    // would leave a black overlay covering the page.
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    setFull(false);
+    exitFullscreen(); // the player is hidden now, and a fullscreen hidden element would cover the page
   }, [replaced]);
 
   // ----- fullscreen control bar: shows on any input, fades after HIDE_AFTER -----
@@ -402,65 +398,8 @@ export default function ScreenPlayer({
 
   // Note: the player stays mounted while replaced; unmounting it would kill the
   // YouTube iframe and "take it back" would then have nothing to play on.
-  const replacedNote = replaced &&
-    (isScreen ? (
-      <main className="screen-msg replaced">
-        <div className="stack center" style={{ maxWidth: 520 }}>
-          <div className="orb" aria-hidden="true" />
-          <h2>{takenOverText(replacedBy)}</h2>
-          <p className="muted">
-            {replacedBy === "cast"
-              ? `Room ${code} is now casting to the TV's YouTube app. Using this screen stops the cast.`
-              : `Room ${code} is now playing on another screen. Only one screen can play at a time.`}
-          </p>
-          <button className="btn primary big" onClick={takeBack}>
-            Use this screen instead
-          </button>
-        </div>
-      </main>
-    ) : (
-      <div className="embed-note">
-        <span className="muted">{takenOverText(replacedBy)}</span>
-        <button className="btn small" onClick={takeBack}>
-          Play here instead
-        </button>
-      </div>
-    ));
+  const replacedNote = replaced && <ReplacedNotice isScreen={isScreen} by={replacedBy} code={code} onTakeBack={takeBack} />;
 
-  const enterNativeFull = async () => {
-    const el = rootEl.current;
-    if (!el?.requestFullscreen || document.fullscreenElement) return;
-    await el.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-    await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape").catch(() => {});
-  };
-  // Screen mode: go full screen right away. Real fullscreen needs a recent click
-  // (e.g. the landing page's Create/Join); otherwise the CSS version fills the window.
-  useEffect(() => {
-    if (autoFull) void enterNativeFull();
-  }, []);
-
-  const toggleFull = async () => {
-    if (full) {
-      if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
-      setFull(false);
-      return;
-    }
-    setFull(true); // CSS full-viewport fallback (iPhone has no element fullscreen)
-    await enterNativeFull();
-  };
-  useEffect(() => {
-    const onChange = () => {
-      if (!document.fullscreenElement) setFull(false);
-    };
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, []);
-  useEffect(() => {
-    if (!full) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [full]);
   const big = isScreen || full; // screen-style overlays
 
   const upNext = state?.queue.slice(0, 5) ?? [];
@@ -489,22 +428,7 @@ export default function ScreenPlayer({
         </button>
       )}
 
-      {started && !playing &&
-        (big ? (
-          <div className="idle">
-            <div className="idle-join">
-              <img className="qr big" src={qrSrc(joinUrl)} alt="Scan to join" />
-              <div>
-                <div className="idle-title">Scan to queue a song</div>
-                <div className="big-code">{code}</div>
-                <div className="muted">{joinUrl}</div>
-              </div>
-            </div>
-            {upNext.length > 0 ? <UpNext items={upNext} /> : <p className="muted">The queue is empty. Add a song from your phone.</p>}
-          </div>
-        ) : (
-          <div className="embed-idle muted">Songs play here. Queue one below.</div>
-        ))}
+      {started && !playing && <IdleScreen big={big} joinUrl={joinUrl} code={code} upNext={upNext} />}
 
       {playing && (
         <>
@@ -547,55 +471,14 @@ export default function ScreenPlayer({
       )}
 
       {ipBlocked && (
-        <div className="start-overlay ip-blocked" role="alert">
-          {ipBlocked.reason === "limit" ? (
-            <>
-              <div className="start-title">YouTube stopped this video while it was playing</div>
-              <div className="muted">
-                This usually means the Google account this screen is signed in to has reached its plan's device limit, for example when the same account is also casting to the TV. Try this screen signed out or in Incognito, or skip the song.
-              </div>
-            </>
-          ) : ipBlocked.reason === "device" ? (
-            <>
-              <div className="start-title">YouTube won't play this video on this device</div>
-              <div className="muted">
-                If another device was playing it, tap "play here instead" there to keep singing. Otherwise skip the song.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="start-title">YouTube blocks this video at this address</div>
-              <div className="muted">
-                This screen is open at {window.location.host}, an address where YouTube blocks many videos. Opened by name, the same video plays, and the song continues where
-                it stopped.
-              </div>
-            </>
-          )}
-          <div className="row">
-            {ipBlocked.reason === "ip" && ipBlocked.shareHost && (
-              <button
-                className="btn primary"
-                onClick={async () => {
-                  if (!(await moveOffIpAddress())) setReopenFailed(true);
-                }}
-              >
-                Reopen at {ipBlocked.shareHost}
-              </button>
-            )}
-            <button
-              className="btn"
-              onClick={() => {
-                socket.current?.emit("screen:event", { type: "skip-blocked", itemId: ipBlocked.itemId });
-                setIpBlocked(null);
-              }}
-            >
-              Skip song
-            </button>
-          </div>
-          {reopenFailed && (
-            <p className="error small">This device can't reach {ipBlocked.shareHost}. Skip the song, or ask the host to set KARAOKE_HOST.</p>
-          )}
-        </div>
+        <BlockedOverlay
+          key={ipBlocked.itemId}
+          block={ipBlocked}
+          onSkip={() => {
+            socket.current?.emit("screen:event", { type: "skip-blocked", itemId: ipBlocked.itemId });
+            setIpBlocked(null);
+          }}
+        />
       )}
 
       {blocked && started && (
@@ -706,20 +589,5 @@ function ScreenSeekBar({ time, duration, paused, onSeek }: { time: number; durat
       }}
       onActivity={poke}
     />
-  );
-}
-
-function UpNext({ items }: { items: QueueItem[] }) {
-  return (
-    <div className="upnext">
-      <h3>Up next</h3>
-      <ol>
-        {items.map((q) => (
-          <li key={q.id}>
-            <b>{q.singerName}</b> <span className="muted">— {q.title}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
   );
 }
