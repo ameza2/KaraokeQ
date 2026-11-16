@@ -361,28 +361,9 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     if (!vid) return;
 
     const ours = !!cur && vid === cur.item.videoId;
-    if (!ours) {
-      // the TV is still switching to the song we just sent: events are about the old video
-      if (cur && !cur.started && Date.now() - cur.sentAt < SWITCH_GRACE_MS) return;
-      if (hasState && (state === 0 || state === -1)) {
-        // the other video ended / stopped
-        if (this.ext?.videoId === vid) {
-          if (state === 0) this.stopped(true, this.ext);
-          else this.scheduleIdle();
-        }
-        return;
-      }
-      if (!this.ext || this.ext.videoId !== vid) {
-        // someone started a different video on the TV: it takes over from our song
-        const interrupted = cur?.started ? cur.item.id : null;
-        if (cur) this.finish();
-        this.ext = { videoId: vid, started: false, time: 0, duration: 0 };
-        console.log(`lounge[${this.name}] TV is playing another video: ${vid}`);
-        this.emit("external", vid, interrupted);
-      }
-    } else if (this.ext) {
-      this.ext = null; // back on our song
-    }
+    if (ours) this.ext = null; // back on our song
+    else if (this.onOtherVideo(vid, cur, hasState ? state : null)) return;
+
     const t = (ours ? cur : this.ext)!;
     if (Number.isFinite(time)) t.time = time;
     if (Number.isFinite(duration) && duration > 0) t.duration = duration;
@@ -394,20 +375,53 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
       if (t.started && Number.isFinite(time)) this.emitProgress(id, t.time, t.duration);
       return;
     }
+    this.applyState(t, ours, id, state);
+  }
+
+  /**
+   * The TV reports a video that is not our current song. Returns true when the event is fully
+   * dealt with (stale, or the other video ending); false when it is a video the TV is playing on
+   * its own and the caller should go on to track it.
+   */
+  private onOtherVideo(vid: string, cur: Current | null, state: number | null): boolean {
+    // the TV is still switching to the song we just sent: events are about the old video
+    if (cur && !cur.started && Date.now() - cur.sentAt < SWITCH_GRACE_MS) return true;
+    if (state === 0 || state === -1) {
+      // the other video ended / stopped
+      if (this.ext?.videoId === vid) {
+        if (state === 0) this.stopped(true, this.ext);
+        else this.scheduleIdle();
+      }
+      return true;
+    }
+    if (!this.ext || this.ext.videoId !== vid) {
+      // someone started a different video on the TV: it takes over from our song
+      const interrupted = cur?.started ? cur.item.id : null;
+      if (cur) this.finish();
+      this.ext = { videoId: vid, started: false, time: 0, duration: 0 };
+      console.log(`lounge[${this.name}] TV is playing another video: ${vid}`);
+      this.emit("external", vid, interrupted);
+    }
+    return false;
+  }
+
+  /** A state report (playing, paused, buffering, ended, stopped) for our song or the external video. */
+  private applyState(t: Current | Ext, ours: boolean, id: string, state: number) {
     if (state === 1 || state === 2 || state === 3) {
       this.cancelIdle();
       if (!t.started && state === 1) {
         t.started = true;
         if (ours) {
-          if (cur!.watchdog) clearTimeout(cur!.watchdog);
-          if (cur!.pauseOnStart) void this.send("pause").catch(() => {});
+          const cur = t as Current;
+          if (cur.watchdog) clearTimeout(cur.watchdog);
+          if (cur.pauseOnStart) void this.send("pause").catch(() => {});
         }
       } else if (t.started && state !== 3) {
         this.remoteState(state === 1);
       }
       if (t.started) this.emitProgress(id, t.time, t.duration);
     } else if (state === 0) {
-      if (t.started) this.stopped(true, ours ? cur! : this.ext!);
+      if (t.started) this.stopped(true, t);
     } else if (state === -1 && t.started) {
       this.scheduleIdle(); // maybe just a hiccup between states; see scheduleIdle
     }

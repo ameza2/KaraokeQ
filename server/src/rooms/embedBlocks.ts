@@ -1,5 +1,5 @@
 import type { Server } from "socket.io";
-import type { ClientToServer, ServerToClient } from "@karaoke/shared";
+import type { ClientToServer, QueueItem, ServerToClient } from "@karaoke/shared";
 import { getShareHost } from "../net.ts";
 import { markNotEmbeddable, unmarkNotEmbeddable } from "../search.ts";
 import type { ScreenInfo } from "../playback/screen.ts";
@@ -39,14 +39,8 @@ export class EmbedBlockPolicy {
     console.warn(
       `[${this.room.code}] screen error ${errorCode} on ${item.videoId} "${item.title}" — screen ${screen?.host ?? "?"} (${screen?.browser ?? "?"})${screen?.ipAddress ? " [raw IP]" : ""}${interrupted ? " [after it started playing]" : ""}`,
     );
-    if (interrupted && screen) {
-      this.room.freezeProgress();
-      this.io.to(screen.socketId).emit("screen:blocked", { itemId, shareHost: null, reason: "limit" });
-      this.room.say(`holding "${item.title}": YouTube stopped it while playing (likely the account's device limit)`);
-      const msg = `YouTube stopped "${item.title}" while it was playing. If the screen is signed in to the same Google account as the YouTube cast, the plan's device limit may be reached: use the screen signed out or in Incognito, or skip the song.`;
-      for (const id of new Set([item.singerId, this.room.hostId].filter((x): x is string => !!x))) this.room.notify(id, { level: "error", message: msg });
-      return;
-    }
+    if (interrupted && screen) return this.holdForLimit(item, screen);
+
     // YouTube can deny a video on one device/address and allow it on another.
     // If it's this screen's problem (raw-IP address, or the song already played on
     // another screen), keep the song and its position instead of skipping it.
@@ -57,21 +51,8 @@ export class EmbedBlockPolicy {
     const streak = embedBlocked && !!screen && !!last && last.socketId === screen.socketId && last.videoId !== item.videoId;
     if (embedBlocked && screen) this.lastBlock = { socketId: screen.socketId, videoId: item.videoId };
     if (streak && last) unmarkNotEmbeddable(last.videoId);
-    if (embedBlocked && screen && (screen.ipAddress || playedElsewhere || streak)) {
-      this.room.freezeProgress();
-      const reason = screen.ipAddress ? "ip" : "device";
-      this.room.say(`holding "${item.title}": ${screen.ipAddress ? "screen is on a raw address" : playedElsewhere ? "it already played on a screen in this room" : "two songs in a row were blocked on this screen"}`);
-      const shareHost = getShareHost();
-      this.io.to(screen.socketId).emit("screen:blocked", { itemId, shareHost, reason });
-      const msg =
-        reason === "device"
-          ? `YouTube won't play "${item.title}" on the current screen. If another device was playing it, tap "play here instead" there; otherwise skip it on the screen.`
-          : shareHost
-            ? `YouTube blocks "${item.title}" on the screen because of its address (IP or localhost). Tap "Reopen at ${shareHost}" on the screen; the song continues from where it stopped.`
-            : `YouTube blocks "${item.title}" on the screen because of its address (IP or localhost). Open the screen by the computer's name instead, or skip the song there.`;
-      for (const id of new Set([item.singerId, this.room.hostId].filter((x): x is string => !!x))) this.room.notify(id, { level: "error", message: msg });
-      return;
-    }
+    if (embedBlocked && screen && (screen.ipAddress || playedElsewhere || streak)) return this.holdForScreen(item, screen, playedElsewhere, streak);
+
     if (embedBlocked) markNotEmbeddable(item.videoId);
     this.room.notify(item.singerId, {
       level: "error",
@@ -80,5 +61,34 @@ export class EmbedBlockPolicy {
         : `"${item.title}" failed to play and was skipped.`,
     });
     this.room.advance();
+  }
+
+  /** YouTube stopped the song while it played (the account's device limit): hold it and say why. */
+  private holdForLimit(item: QueueItem, screen: ScreenInfo) {
+    this.room.freezeProgress();
+    this.io.to(screen.socketId).emit("screen:blocked", { itemId: item.id, shareHost: null, reason: "limit" });
+    this.room.say(`holding "${item.title}": YouTube stopped it while playing (likely the account's device limit)`);
+    this.tellSingerAndHost(item, `YouTube stopped "${item.title}" while it was playing. If the screen is signed in to the same Google account as the YouTube cast, the plan's device limit may be reached: use the screen signed out or in Incognito, or skip the song.`);
+  }
+
+  /** The screen is the problem (raw address, or the song already played elsewhere, or a streak): hold the song. */
+  private holdForScreen(item: QueueItem, screen: ScreenInfo, playedElsewhere: boolean, streak: boolean) {
+    this.room.freezeProgress();
+    const reason = screen.ipAddress ? "ip" : "device";
+    const why = screen.ipAddress ? "screen is on a raw address" : playedElsewhere ? "it already played on a screen in this room" : streak ? "two songs in a row were blocked on this screen" : "blocked";
+    this.room.say(`holding "${item.title}": ${why}`);
+    const shareHost = getShareHost();
+    this.io.to(screen.socketId).emit("screen:blocked", { itemId: item.id, shareHost, reason });
+    const msg =
+      reason === "device"
+        ? `YouTube won't play "${item.title}" on the current screen. If another device was playing it, tap "play here instead" there; otherwise skip it on the screen.`
+        : shareHost
+          ? `YouTube blocks "${item.title}" on the screen because of its address (IP or localhost). Tap "Reopen at ${shareHost}" on the screen; the song continues from where it stopped.`
+          : `YouTube blocks "${item.title}" on the screen because of its address (IP or localhost). Open the screen by the computer's name instead, or skip the song there.`;
+    this.tellSingerAndHost(item, msg);
+  }
+
+  private tellSingerAndHost(item: QueueItem, message: string) {
+    for (const id of new Set([item.singerId, this.room.hostId].filter((x): x is string => !!x))) this.room.notify(id, { level: "error", message });
   }
 }
