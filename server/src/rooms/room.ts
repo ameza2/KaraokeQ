@@ -411,19 +411,47 @@ export class Room {
 
   private firstReport: { itemId: string; time: number } | null = null;
 
-  reportProgress(p: Progress) {
+  /**
+   * A seek the browser screen has been told about: until it reports a position near the target,
+   * its older reports (already on the wire) would pull the bar back. The cast has its own guard.
+   */
+  private seekGuard: { itemId: string; target: number; at: number } | null = null;
+  private static readonly SEEK_GUARD_MS = 3000;
+
+  /** `measured`: the position was reported by an output, not guessed by us (a seek's optimistic update). */
+  reportProgress(p: Progress, measured = true) {
     if (!this.nowPlaying || p.itemId !== this.nowPlaying.id) return;
     const time = Number(p.time), duration = Number(p.duration);
     if (!isFinite(time) || !isFinite(duration)) return;
-    // A position alone proves nothing: a screen resuming a song reports the resume point
-    // even if the video never starts. Playback is real once the position has moved on.
-    const first = this.firstReport?.itemId === p.itemId ? this.firstReport : (this.firstReport = { itemId: p.itemId, time });
-    if (time - first.time >= 2) {
-      this.embedBlocks.markPlayed(this.nowPlaying.videoId); // it really played on some screen
+    if (measured && this.staleAfterSeek(p.itemId, time)) return;
+    if (measured) {
+      // A position alone proves nothing: a screen resuming a song reports the resume point
+      // even if the video never starts. Playback is real once the position has moved on.
+      const first = this.firstReport?.itemId === p.itemId ? this.firstReport : (this.firstReport = { itemId: p.itemId, time });
+      if (time - first.time >= 2) {
+        this.embedBlocks.markPlayed(this.nowPlaying.videoId); // it really played on some screen
+      }
     }
     this.progress = { itemId: p.itemId, time, duration };
     this.progressAt = this.paused || !this.playbackLive() ? null : Date.now();
     this.io.to(this.channel).emit("playback:progress", this.progress);
+  }
+
+  /** True when a screen report is from before the last seek took effect (and so is ignored). */
+  private staleAfterSeek(itemId: string, time: number): boolean {
+    const g = this.seekGuard;
+    if (!g) return false;
+    const elapsed = (Date.now() - g.at) / 1000;
+    if (g.itemId !== itemId || this.mode !== "screen" || elapsed * 1000 > Room.SEEK_GUARD_MS) {
+      this.seekGuard = null;
+      return false;
+    }
+    // near the target, or near where playing on from it would be by now (a paused video stays put)
+    if (Math.min(Math.abs(time - g.target), Math.abs(time - (g.target + elapsed))) <= 4) {
+      this.seekGuard = null;
+      return false;
+    }
+    return true;
   }
 
   /** Best estimate of the current position of the playing song. */
@@ -452,8 +480,9 @@ export class Room {
     const duration = this.progress?.itemId === this.nowPlaying.id ? this.progress.duration : 0;
     const t = Math.max(0, duration ? Math.min(seconds, duration - 0.5) : seconds);
     void this.output.seek(t);
-    // optimistic update so every phone's bar jumps immediately
-    this.reportProgress({ itemId: this.nowPlaying.id, time: t, duration });
+    this.seekGuard = this.mode === "screen" ? { itemId: this.nowPlaying.id, target: t, at: Date.now() } : null;
+    // optimistic update so every phone's bar jumps immediately (a guess, not proof the song plays)
+    this.reportProgress({ itemId: this.nowPlaying.id, time: t, duration }, false);
   }
 
   /** The cast is still applying the last pause/resume; further toggles wait for the TV. */

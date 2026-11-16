@@ -128,3 +128,27 @@ describe("room creation limits", () => {
     }
   });
 });
+
+describe("seeking on the browser screen", () => {
+  it("ignores a stale report from before the seek instead of bouncing the bar back", async () => {
+    const { code, hostToken } = await createRoom(server.url);
+    const host = newClient("seek-host");
+    await host.join(code, hostToken);
+    const tv = newClient("seek-tv");
+    await tv.joinScreen(code);
+    await host.add({ videoId: "seekSong001", title: "Seek", channel: "t", duration: "3:20", thumb: "" });
+    const state = await host.waitState((s) => !!s.nowPlaying, "a song on stage");
+    const itemId = state.nowPlaying!.id;
+    const times: number[] = [];
+    host.socket.on("playback:progress", (p) => times.push(Math.round(p.time)));
+
+    tv.emit("screen:progress", { itemId, time: 10, duration: 200 });
+    await until(() => times.includes(10), "the first report");
+    host.emit("playback:seek", { seconds: 100 });
+    await until(() => times.includes(100), "the optimistic position");
+    tv.emit("screen:progress", { itemId, time: 11, duration: 200 }); // sent before the player jumped
+    tv.emit("screen:progress", { itemId, time: 101, duration: 200 }); // after it jumped
+    await until(() => times.includes(101), "the report after the jump");
+    assert.ok(!times.includes(11), `the stale position must not reach phones (saw ${times.join(", ")})`);
+  });
+});
