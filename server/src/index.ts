@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import express from "express";
 import { Server } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
-import { RoomRegistry } from "./rooms.ts";
+import { RoomRegistry } from "./rooms/index.ts";
 import { FilePlayLog, dataDir } from "./playLog.ts";
 import { startShareHostWatch } from "./net.ts";
 import { Logger } from "./logger.ts";

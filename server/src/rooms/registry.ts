@@ -1,0 +1,57 @@
+import { randomBytes } from "node:crypto";
+import type { Server } from "socket.io";
+import type { ClientToServer, ServerToClient } from "@karaoke/shared";
+import type { PlayLog } from "../playLog.ts";
+import { Room } from "./room.ts";
+
+type IO = Server<ClientToServer, ServerToClient>;
+
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
+
+export class RoomRegistry {
+  private rooms = new Map<string, Room>();
+
+  constructor(
+    private io: IO,
+    readonly log: PlayLog,
+  ) {
+    // Drop rooms nobody has touched for 6 hours.
+    setInterval(() => {
+      const cutoff = Date.now() - 6 * 3600e3;
+      for (const [code, room] of this.rooms)
+        if (!room.isConnected() && room.lastActive < cutoff) {
+          room.say("room expired (idle for 6 hours)");
+          void room.dispose();
+          this.rooms.delete(code);
+        }
+    }, 10 * 60e3).unref();
+  }
+
+  create(): Room {
+    let code: string;
+    do {
+      code = Array.from(randomBytes(4), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+    } while (this.rooms.has(code));
+    const room = new Room(this.io, code, this.log);
+    this.rooms.set(code, room);
+    return room;
+  }
+
+  get(code: string | undefined): Room | undefined {
+    return code ? this.rooms.get(code.toUpperCase()) : undefined;
+  }
+
+  /** Every live room, oldest first. */
+  list(): Room[] {
+    return [...this.rooms.values()].sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Close and forget a room. Returns false when there's no such room. */
+  async delete(code: string, message: string): Promise<boolean> {
+    const room = this.get(code);
+    if (!room) return false;
+    this.rooms.delete(room.code);
+    await room.close(message);
+    return true;
+  }
+}

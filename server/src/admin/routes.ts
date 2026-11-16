@@ -5,7 +5,7 @@ import type { Server } from "socket.io";
 import type { AdminRoomReport, AdminSession, AdminStats, MetricHistory } from "@karaoke/shared";
 import type { Logger } from "../logger.ts";
 import type { PlayLog } from "../playLog.ts";
-import type { Room, RoomRegistry } from "../rooms.ts";
+import type { Room, RoomRegistry } from "../rooms/index.ts";
 import { rateLimiter } from "../search.ts";
 import { isTheme, type SiteSettings } from "../siteSettings.ts";
 import { castLog } from "../playback/lounge.ts";

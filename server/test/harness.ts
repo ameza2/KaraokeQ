@@ -89,6 +89,7 @@ export class Client {
   notices: string[] = [];
   commands: unknown[] = [];
   replacedBy: string | null = null;
+  blocked: { itemId: string; reason: string }[] = [];
   readonly socket: TestSocket;
 
   constructor(url: string, readonly singerId: string, readonly name = singerId) {
@@ -97,6 +98,7 @@ export class Client {
     this.socket.on("notice", (n) => this.notices.push(n.message));
     this.socket.on("screen:command", (c) => this.commands.push(c));
     this.socket.on("screen:replaced", (by) => (this.replacedBy = by));
+    this.socket.on("screen:blocked", (b) => this.blocked.push(b));
     this.socket.on("host:token", (p) => (this.hostToken = p.hostToken));
   }
 

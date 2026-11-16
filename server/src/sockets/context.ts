@@ -1,6 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
-import type { Room, RoomRegistry } from "../rooms.ts";
+import type { Room, RoomRegistry } from "../rooms/index.ts";
 
 export interface SocketData {
   code?: string;

@@ -1,20 +1,19 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Server } from "socket.io";
 import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, RoomSettings, ScreenCommand, RoomState, ServerToClient, VideoResult } from "@karaoke/shared";
-import type { PlaybackOutput } from "./playback/output.ts";
-import { ScreenOutput } from "./playback/screen.ts";
-import { LoungeOutput, pairCast } from "./playback/lounge.ts";
-import { isEmbeddable, markNotEmbeddable, unmarkNotEmbeddable, videoInfo } from "./search.ts";
-import { getShareHost } from "./net.ts";
-import type { ScreenInfo } from "./playback/screen.ts";
-import { toPlayRecord, type PlayLog } from "./playLog.ts";
+import type { PlaybackOutput } from "../playback/output.ts";
+import { ScreenOutput } from "../playback/screen.ts";
+import type { LoungeOutput } from "../playback/lounge.ts";
+import type { ScreenInfo } from "../playback/screen.ts";
+import { toPlayRecord, type PlayLog } from "../playLog.ts";
 import { THEMES } from "@karaoke/shared";
+import { RoomCast } from "./cast.ts";
+import { EmbedBlockPolicy } from "./embedBlocks.ts";
 
 type IO = Server<ClientToServer, ServerToClient>;
 
 const MAX_QUEUED_PER_SINGER = 5;
 const HISTORY_LIMIT = 30; // shown to singers; the full record is in the play log
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 
 interface SingerRecord {
   id: string;
@@ -23,9 +22,6 @@ interface SingerRecord {
   screen: boolean;
 }
 
-/** Which room is casting to which TV (by the TV's screen id): the newest pairing wins. */
-const castOwners = new Map<string, Room>();
-
 export class Room {
   /** Proof of host for reconnects. Rotated on hand-over so the old host's copy stops working. */
   hostToken = randomBytes(16).toString("hex");
@@ -33,10 +29,6 @@ export class Room {
   hostId: string | null = null;
   settings: RoomSettings = { openControls: false, fairQueue: true, theme: "orange" };
   /** Screen-created rooms have no host yet: the first phone to join claims it. */
-  /** Videos that actually played on a screen in this room (so a later block is device-specific). */
-  playedOk = new Set<string>();
-  /** The most recent embed block (to spot a screen that blocks everything). */
-  private lastBlock: { socketId: string; videoId: string } | null = null;
   /** Device id of the active screen (see hasHostPowers). */
   screenSinger: string | null = null;
 
@@ -119,6 +111,8 @@ export class Room {
   lastActive = Date.now();
   /** The browser screen output; always present (idle while a YouTube cast is the output). */
   readonly screenOutput: ScreenOutput;
+  private readonly embedBlocks: EmbedBlockPolicy;
+  private readonly cast: RoomCast;
   /** The YouTube cast (the TV's YouTube app), when one is paired. */
   lounge: LoungeOutput | null = null;
 
@@ -128,7 +122,7 @@ export class Room {
   }
 
   /** Something is actually playing the videos (a connected screen, or the TV's app). */
-  private playbackLive() {
+  playbackLive() {
     // A TV keeps playing when our link to it drops, so its clock keeps running too.
     return this.mode === "lounge" ? !!this.lounge : this.screens.size > 0;
   }
@@ -142,6 +136,8 @@ export class Room {
     readonly code: string,
     private log: PlayLog,
   ) {
+    this.embedBlocks = new EmbedBlockPolicy(this, io);
+    this.cast = new RoomCast(this);
     this.screenOutput = this.attach(new ScreenOutput(io, code));
     log.openRoom({ roomId: this.id, roomCode: code, createdAt: this.createdAt });
     this.say("room created");
@@ -191,60 +187,8 @@ export class Room {
     output.on("ended", (itemId: string) => {
       if (this.nowPlaying?.id === itemId) this.advance();
     });
-    output.on("error", (itemId: string, errorCode?: number, screen?: ScreenInfo, played?: boolean) => {
-      const item = this.nowPlaying;
-      if (!item || item.id !== itemId) return;
-      const codeBlocked = errorCode === 101 || errorCode === 150;
-      // An embed block fails at load. 101/150 after the video was already playing means YouTube
-      // stopped it mid-way, most often because the signed-in account's plan hit its device limit
-      // (e.g. the same Premium account is also casting to the TV). That says nothing about the video.
-      const interrupted = codeBlocked && !!played && !!screen;
-      const embedBlocked = codeBlocked && !interrupted;
-      console.warn(
-        `[${this.code}] screen error ${errorCode} on ${item.videoId} "${item.title}" — screen ${screen?.host ?? "?"} (${screen?.browser ?? "?"})${screen?.ipAddress ? " [raw IP]" : ""}${interrupted ? " [after it started playing]" : ""}`,
-      );
-      if (interrupted && screen) {
-        this.freezeProgress();
-        this.io.to(screen.socketId).emit("screen:blocked", { itemId, shareHost: null, reason: "limit" });
-        this.say(`holding "${item.title}": YouTube stopped it while playing (likely the account's device limit)`);
-        const msg = `YouTube stopped "${item.title}" while it was playing. If the screen is signed in to the same Google account as the YouTube cast, the plan's device limit may be reached: use the screen signed out or in Incognito, or skip the song.`;
-        for (const id of new Set([item.singerId, this.hostId].filter((x): x is string => !!x))) this.notify(id, { level: "error", message: msg });
-        return;
-      }
-      // YouTube can deny a video on one device/address and allow it on another.
-      // If it's this screen's problem (raw-IP address, or the song already played on
-      // another screen), keep the song and its position instead of skipping it.
-      const playedElsewhere = this.playedOk.has(item.videoId);
-      // Two different songs in a row blocked on the same screen with nothing playing
-      // in between: the screen is the problem, not the videos. Stop skipping.
-      const last = this.lastBlock;
-      const streak = embedBlocked && !!screen && !!last && last.socketId === screen.socketId && last.videoId !== item.videoId;
-      if (embedBlocked && screen) this.lastBlock = { socketId: screen.socketId, videoId: item.videoId };
-      if (streak && last) unmarkNotEmbeddable(last.videoId);
-      if (embedBlocked && screen && (screen.ipAddress || playedElsewhere || streak)) {
-        this.freezeProgress();
-        const reason = screen.ipAddress ? "ip" : "device";
-        this.say(`holding "${item.title}": ${screen.ipAddress ? "screen is on a raw address" : playedElsewhere ? "it already played on a screen in this room" : "two songs in a row were blocked on this screen"}`);
-        const shareHost = getShareHost();
-        this.io.to(screen.socketId).emit("screen:blocked", { itemId, shareHost, reason });
-        const msg =
-          reason === "device"
-            ? `YouTube won't play "${item.title}" on the current screen. If another device was playing it, tap "play here instead" there; otherwise skip it on the screen.`
-            : shareHost
-              ? `YouTube blocks "${item.title}" on the screen because of its address (IP or localhost). Tap "Reopen at ${shareHost}" on the screen; the song continues from where it stopped.`
-              : `YouTube blocks "${item.title}" on the screen because of its address (IP or localhost). Open the screen by the computer's name instead, or skip the song there.`;
-        for (const id of new Set([item.singerId, this.hostId].filter((x): x is string => !!x))) this.notify(id, { level: "error", message: msg });
-        return;
-      }
-      if (embedBlocked) markNotEmbeddable(item.videoId);
-      this.notify(item.singerId, {
-        level: "error",
-        message: embedBlocked
-          ? `"${item.title}" only plays on YouTube, so the web player skipped it. Try another version.`
-          : `"${item.title}" failed to play and was skipped.`,
-      });
-      this.advance();
-    });
+    output.on("error", (itemId: string, errorCode?: number, screen?: ScreenInfo, played?: boolean) =>
+      this.embedBlocks.handleError(itemId, errorCode, screen, played));
     // The person at an IP-address screen chose to skip the blocked song.
     output.on("skip-blocked", (itemId: string) => {
       if (this.nowPlaying?.id === itemId) this.advance();
@@ -429,7 +373,7 @@ export class Room {
     this.start(this.queue.shift() ?? null);
   }
 
-  private start(next: QueueItem | null) {
+  start(next: QueueItem | null) {
     this.firstReport = null;
     this.nowPlaying = next;
     this.paused = false;
@@ -455,7 +399,7 @@ export class Room {
    * When `progress` was last known to be advancing in real time (Date.now()),
    * or null when the clock is frozen (paused, or no screen is playing it).
    */
-  private progressAt: number | null = null;
+  progressAt: number | null = null;
 
   private firstReport: { itemId: string; time: number } | null = null;
 
@@ -467,8 +411,7 @@ export class Room {
     // even if the video never starts. Playback is real once the position has moved on.
     const first = this.firstReport?.itemId === p.itemId ? this.firstReport : (this.firstReport = { itemId: p.itemId, time });
     if (time - first.time >= 2) {
-      this.playedOk.add(this.nowPlaying.videoId); // it really played on some screen
-      this.lastBlock = null; // a screen is playing fine
+      this.embedBlocks.markPlayed(this.nowPlaying.videoId); // it really played on some screen
     }
     this.progress = { itemId: p.itemId, time, duration };
     this.progressAt = this.paused || !this.playbackLive() ? null : Date.now();
@@ -531,111 +474,22 @@ export class Room {
     this.broadcast();
   }
 
-  // ---------- YouTube cast (Lounge protocol) ----------
+  // ---------- YouTube cast (see cast.ts) ----------
 
-  private pairing = false;
-  /** Songs may have been queued that only play on YouTube: check them when a screen takes over. */
-  private needsEmbedCheck = false;
-
-  /**
-   * Pair the YouTube cast and move playback there, from the current position.
-   * Returns an error message, or null on success.
-   */
-  async pairCast(rawCode: string): Promise<{ error: string } | { name: string }> {
-    if (this.lounge) return { error: "Stop casting first, then pair the new code." };
-    if (this.pairing) return { error: "Already pairing, one moment." };
-    this.pairing = true;
-    try {
-      const target = await pairCast(rawCode);
-      const lounge = new LoungeOutput(target);
-      try {
-        await lounge.connect();
-      } catch (err) {
-        await lounge.dispose();
-        throw err;
-      }
-      // The newest connection wins: another room casting to this TV loses it (and must not
-      // stop the video this room is about to start), and any joined screen is replaced.
-      const rival = castOwners.get(target.screenId);
-      if (rival && rival !== this) await rival.useScreen("The YouTube cast moved to another room. Pair again or open a screen.", { leaveTv: true });
-      castOwners.set(target.screenId, this);
-      this.needsEmbedCheck = true;
-      this.replaceScreens(null, "cast");
-      this.freezeProgress();
-      const startAt = this.currentTime();
-      this.lounge = lounge;
-      this.wireLounge(lounge);
-      this.mode = "lounge";
-      if (this.nowPlaying) void lounge.play(this.nowPlaying, { startAt, paused: this.paused });
-      void lounge.syncNow(); // picks up a video the TV was already playing
-      this.say(`YouTube cast paired: "${lounge.name}"`);
-      this.broadcast();
-      return { name: lounge.name };
-    } catch (err) {
-      this.say(`YouTube cast pairing failed: ${(err as Error).message}`);
-      return { error: (err as Error).message };
-    } finally {
-      this.pairing = false;
-    }
+  pairCast(rawCode: string) {
+    return this.cast.pairCast(rawCode);
   }
 
-  private wireLounge(lounge: LoungeOutput) {
-    lounge.on("ended", (itemId: string) => {
-      if (this.nowPlaying?.id === itemId) this.advance();
-    });
-    lounge.on("error", (itemId: string) => {
-      const item = this.nowPlaying;
-      if (!item || item.id !== itemId) return;
-      this.say(`YouTube cast didn't start "${item.title}" (${item.videoId}), skipping`);
-      this.notify(item.singerId, { level: "error", message: `"${item.title}" didn't start on YouTube and was skipped.` });
-      this.advance();
-    });
-    // the TV reports an external video's position as "external": map it to the room's item
-    lounge.on("progress", (p: Progress) => this.reportProgress(p.itemId === "external" && this.nowPlaying?.external ? { ...p, itemId: this.nowPlaying.id } : p));
-    // someone used the TV remote: follow it instead of fighting it
-    lounge.on("remote-state", (s: "playing" | "paused") => this.syncPaused(s === "paused"));
-    lounge.on("settled", () => {
-      if (!this.pausePending) return;
-      this.pausePending = false;
-      this.broadcast();
-    });
-    // The TV started another video by itself: show it as the current video. Someone chose
-    // that on purpose, so the song it replaced is dropped; the queue carries on after it.
-    lounge.on("external", (videoId: string) => this.takeOver(videoId));
-    lounge.on("external-ended", () => {
-      if (this.nowPlaying?.external) this.advance();
-    });
-    lounge.on("external-idle", () => {
-      // back on the TV's home screen: nothing plays, the queue waits
-      if (!this.nowPlaying?.external) return;
-      this.say("Cast left its own video; queue on hold");
-      this.clearStage();
-    });
-    // The TV left one of our songs. At the end that's just the end; earlier it was a
-    // deliberate change, so the song is dropped and the queue waits.
-    lounge.on("idle", (itemId: string) => {
-      const item = this.nowPlaying;
-      if (!item || item.id !== itemId) return;
-      const d = this.progress?.itemId === item.id ? this.progress.duration : 0;
-      if (d && this.currentTime() >= d - 8) return this.advance();
-      this.say(`Cast left "${item.title}" before the end, dropped; queue on hold`);
-      this.clearStage();
-      this.notify(item.singerId, { level: "info", message: `"${item.title}" was stopped on YouTube.` });
-      if (this.hostId && this.hostId !== item.singerId) this.notify(this.hostId, { level: "info", message: `"${item.title}" was stopped on YouTube. The queue is on hold; press play to carry on.` });
-    });
-    lounge.on("link", (up: boolean) => {
-      // The TV keeps playing when our link drops, so the song and its clock carry on as they were.
-      this.say(`YouTube cast ${up ? "connected" : "disconnected"}`);
-      if (up) void lounge.syncNow();
-      this.broadcast();
-    });
-    lounge.on("lost", () => {
-      if (this.hostId) this.notify(this.hostId, { level: "error", message: "Lost contact with the YouTube cast. It keeps playing its current video; reconnecting…" });
-    });
+  dropUnembeddable() {
+    return this.cast.dropUnembeddable();
+  }
+
+  useScreen(message?: string, opts: { leaveTv?: boolean } = {}) {
+    return this.cast.useScreen(message, opts);
   }
 
   /** Nothing on stage (the queue is untouched). */
-  private clearStage() {
+  clearStage() {
     this.nowPlaying = null;
     this.paused = false;
     this.progress = null;
@@ -643,158 +497,9 @@ export class Room {
     this.broadcast();
   }
 
-  private takeOver(videoId: string) {
-    if (this.nowPlaying?.videoId === videoId && this.nowPlaying.external) return;
-    const replaced = this.nowPlaying && !this.nowPlaying.external ? this.nowPlaying : null; // dropped: the change was deliberate
-    if (replaced) this.notify(replaced.singerId, { level: "info", message: `"${replaced.title}" was replaced by another video from the TV remote.` });
-    const item: QueueItem = {
-      id: randomUUID(),
-      videoId,
-      title: "Playing on YouTube from TV remote",
-      channel: "",
-      duration: "",
-      thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
-      singerId: "",
-      singerName: "TV remote",
-      addedAt: Date.now(),
-      external: true,
-    };
-    this.nowPlaying = item;
-    this.paused = false;
-    this.progress = null;
-    this.progressAt = null;
-    this.say(`Cast started its own video (${videoId})${replaced ? `, replacing "${replaced.title}" (dropped)` : ""}`);
-    this.broadcast();
-    void videoInfo(videoId).then((info) => {
-      if (!info || this.nowPlaying?.id !== item.id) return;
-      item.title = info.title || item.title;
-      item.channel = info.channel;
-      this.broadcast();
-    });
-  }
-
-  /** The TV's own remote paused/resumed: mirror it without sending a command back. */
-  private syncPaused(paused: boolean) {
-    if (!this.nowPlaying || this.paused === paused) return;
-    if (paused) this.freezeProgress();
-    this.paused = paused;
-    if (!paused && this.progress && this.playbackLive()) this.progressAt = Date.now();
-    this.broadcast();
-  }
-
-  private async dropLounge() {
-    const old = this.lounge;
-    this.lounge = null;
-    this.pausePending = false;
-    if (old && castOwners.get(old.screen.screenId) === this) castOwners.delete(old.screen.screenId);
-    await old?.dispose();
-  }
-
-  /**
-   * The web player can only play videos the uploader allows to be embedded, but the
-   * YouTube cast plays anything. When a screen takes over after casting, take the songs
-   * it can't play out of the queue (and off the stage), and tell their singers.
-   * Does nothing unless the room has cast since the last check.
-   */
-  async dropUnembeddable() {
-    if (!this.needsEmbedCheck || this.mode !== "screen") return;
-    this.needsEmbedCheck = false;
-    const items = [this.nowPlaying, ...this.queue].filter((x): x is QueueItem => !!x && !x.external);
-    const flags = await Promise.all(items.map((x) => isEmbeddable(x.videoId)));
-    const blocked = new Set(items.filter((_, i) => !flags[i]).map((x) => x.id));
-    if (blocked.size === 0) return;
-    const dropped = items.filter((x) => blocked.has(x.id));
-    this.queue = this.queue.filter((x) => !blocked.has(x.id));
-    const lostStage = !!this.nowPlaying && blocked.has(this.nowPlaying.id);
-    for (const x of dropped) this.say(`dropped "${x.title}" (${x.videoId}): only plays on YouTube`);
-    const bySinger = new Map<string, QueueItem[]>();
-    for (const x of dropped) bySinger.set(x.singerId, [...(bySinger.get(x.singerId) ?? []), x]);
-    for (const [singerId, list] of bySinger)
-      this.notify(singerId, {
-        level: "error",
-        message: list.length === 1 ? `"${list[0].title}" only plays on YouTube, so it was removed.` : `${list.length} of your songs only play on YouTube, so they were removed.`,
-      });
-    if (lostStage) {
-      // dropped, not played: it isn't logged or added to the history
-      this.nowPlaying = null;
-      this.start(this.queue.shift() ?? null);
-    } else this.broadcast();
-  }
-
-  /** Stop casting and carry on from the same spot on the browser screen. */
-  async useScreen(message?: string, opts: { leaveTv?: boolean } = {}) {
-    if (!this.lounge) return;
-    this.freezeProgress();
-    const startAt = this.currentTime();
-    const lounge = this.lounge;
-    // a video the TV started itself can't be moved to the browser screen; leave it on the TV
-    if (this.nowPlaying?.external) {
-      this.nowPlaying = null;
-      this.progress = null;
-      this.progressAt = null;
-    } else if (!opts.leaveTv) void lounge.stop();
-    await this.dropLounge();
-    this.mode = "screen";
-    this.say(message ? `YouTube cast unpaired: ${message}` : "YouTube cast unpaired");
-    const onStage = this.nowPlaying;
-    if (!opts.leaveTv) await this.dropUnembeddable();
-    // (if the song on stage was dropped, the next one has already started from the top)
-    if (this.nowPlaying && this.nowPlaying === onStage) void this.screenOutput.play(this.nowPlaying, { startAt, paused: this.paused });
-    if (message && this.hostId) this.notify(this.hostId, { level: "error", message });
-    this.broadcast();
-  }
-
   async dispose() {
     if (this.hostAwayTimer) clearTimeout(this.hostAwayTimer);
     await this.screenOutput.dispose();
-    await this.dropLounge();
-  }
-}
-
-export class RoomRegistry {
-  private rooms = new Map<string, Room>();
-
-  constructor(
-    private io: IO,
-    readonly log: PlayLog,
-  ) {
-    // Drop rooms nobody has touched for 6 hours.
-    setInterval(() => {
-      const cutoff = Date.now() - 6 * 3600e3;
-      for (const [code, room] of this.rooms)
-        if (!room.isConnected() && room.lastActive < cutoff) {
-          room.say("room expired (idle for 6 hours)");
-          void room.dispose();
-          this.rooms.delete(code);
-        }
-    }, 10 * 60e3).unref();
-  }
-
-  create(): Room {
-    let code: string;
-    do {
-      code = Array.from(randomBytes(4), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
-    } while (this.rooms.has(code));
-    const room = new Room(this.io, code, this.log);
-    this.rooms.set(code, room);
-    return room;
-  }
-
-  get(code: string | undefined): Room | undefined {
-    return code ? this.rooms.get(code.toUpperCase()) : undefined;
-  }
-
-  /** Every live room, oldest first. */
-  list(): Room[] {
-    return [...this.rooms.values()].sort((a, b) => a.createdAt - b.createdAt);
-  }
-
-  /** Close and forget a room. Returns false when there's no such room. */
-  async delete(code: string, message: string): Promise<boolean> {
-    const room = this.get(code);
-    if (!room) return false;
-    this.rooms.delete(room.code);
-    await room.close(message);
-    return true;
+    await this.cast.dispose();
   }
 }

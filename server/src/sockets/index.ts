@@ -1,4 +1,4 @@
-import type { RoomRegistry } from "../rooms.ts";
+import type { RoomRegistry } from "../rooms/index.ts";
 import { createContext, type IO } from "./context.ts";
 import { hostHandlers } from "./hostHandlers.ts";
 import { playbackHandlers } from "./playbackHandlers.ts";

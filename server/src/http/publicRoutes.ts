@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import QRCode from "qrcode";
-import type { RoomRegistry } from "../rooms.ts";
+import type { RoomRegistry } from "../rooms/index.ts";
 import type { PlayLog } from "../playLog.ts";
 import { getShareHost, lanIps } from "../net.ts";
 import { rateLimiter, searchVideos, suggest } from "../search.ts";
