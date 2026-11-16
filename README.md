@@ -101,6 +101,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 | **Screen** (superhost) | Everything the host can do. It keeps these powers even after handing host away, and can move host from one person to another |
 
 - **First host:** a room without a host gives host to the first person who joins. The creator's saved link always reclaims it.
+- **Host away:** once the host has been fully disconnected (every device) for 5 minutes, everyone else sees **Claim host**. The first person to tap it becomes host. A host who keeps a phone open keeps the role.
 - **Hand-over:** ☰ → Make someone else host. The old host's saved link stops granting host, the new host stays host after a reload, and whoever loses host is told.
 - **The screen** is whichever device plays the videos: a `/screen` page, or a phone/laptop using Play on this device.
 - **One screen per room:**
@@ -160,6 +161,7 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
   - Screen address.
   - **Settings** as checkboxes you can change from here: Everyone can control, Fair queue, plus the room's colour.
   - Now playing, **users** (online or offline), the **queue**, and the **queue history**: the last 30 songs, with a button to load every song from the play log.
+- **YouTube cast:** enter the TV's *Settings → Link with TV code* to cast a room to the TV's YouTube app, or **Stop casting**. A room that is already casting must stop first. The row also shows whether the cast is connected.
 - **Make host** next to any singer assigns the host role. The new host and the previous host are both told.
 - **+ Add room** creates a room; the first person to join becomes its host.
 - **Delete room** (asks first) disconnects everyone and shows them "This room was closed by the admin". The play log and room log files are kept.
@@ -240,6 +242,6 @@ data/     runtime files, git-ignored: rooms/ (play log), logs/, metrics/, admin/
 ## Next steps
 
 Planned work:
-1. YouTube TV casting.
+1. YouTube cast: more testing on real TVs.
 2. Refactoring and a test suite.
 3. Source control: a remote and branching conventions.

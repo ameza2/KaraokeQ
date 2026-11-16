@@ -177,6 +177,8 @@ export interface AdminRoomReport {
   screenConnected: boolean;
   /** Hostname the screen page is open at, when one is connected. */
   screenHost: string | null;
+  /** The YouTube cast, when one is paired. */
+  cast: { name: string; connected: boolean } | null;
   paused: boolean;
   settings: RoomSettings;
   nowPlaying: QueueItem | null;

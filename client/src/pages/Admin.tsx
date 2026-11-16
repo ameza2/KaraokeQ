@@ -424,6 +424,16 @@ function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomRe
   const base = `${window.location.protocol}//${lanHost}/r/${room.code}`;
   const [allPlays, setAllPlays] = useState<QueueItem[] | null>(null);
   const people = room.singers.filter((s) => !s.screen);
+  const [linkCode, setLinkCode] = useState("");
+  const [pairing, setPairing] = useState(false);
+  const linkDigits = linkCode.replace(/\D/g, "").slice(0, 12);
+  const pair = async () => {
+    setPairing(true);
+    const r = await run(() => api("POST", `/rooms/${room.code}/cast`, { code: linkDigits }), `${room.code}: YouTube cast paired`);
+    setPairing(false);
+    if (r) setLinkCode("");
+    await onChanged();
+  };
   const setSetting = async (patch: Partial<RoomSettings>, done: string) => {
     await run(() => api("PUT", `/rooms/${room.code}/settings`, patch), `${room.code}: ${done}`);
     await onChanged();
@@ -437,7 +447,48 @@ function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomRe
         <Fact label="Last activity" value={`${duration(now - room.lastActive)} ago`} />
         <Fact label="Songs played" value={String(room.playCount)} />
         <Fact label="Screen" value={room.screenConnected ? `Connected${room.screenHost ? ` (${room.screenHost})` : ""}` : "Not connected"} />
+        <Fact label="YouTube cast" value={room.cast ? `${room.cast.name} (${room.cast.connected ? "connected" : "reconnecting"})` : "Not paired"} />
       </dl>
+
+      <h3>YouTube cast</h3>
+      {room.cast ? (
+        <div className="admin-actions">
+          <span className="admin-grow">
+            <span className={`dot ${room.cast.connected ? "on" : ""}`} title={room.cast.connected ? "Connected" : "Reconnecting"} /> {room.cast.name}
+            <span className="muted small"> · {room.cast.connected ? "connected" : "reconnecting…"}</span>
+          </span>
+          <button
+            className="btn small"
+            onClick={async () => {
+              await run(() => api("DELETE", `/rooms/${room.code}/cast`), `${room.code}: stopped casting`);
+              await onChanged();
+            }}
+          >
+            Stop casting
+          </button>
+        </div>
+      ) : (
+        <form
+          className="admin-actions"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (linkDigits.length === 12 && !pairing) void pair();
+          }}
+        >
+          <input
+            className="input"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="TV's Link with TV code"
+            aria-label="Link code"
+            value={linkDigits.replace(/(\d{3})(?=\d)/g, "$1 ")}
+            onChange={(e) => setLinkCode(e.target.value)}
+          />
+          <button className="btn small" disabled={linkDigits.length !== 12 || pairing}>
+            {pairing ? "Connecting…" : "Pair"}
+          </button>
+        </form>
+      )}
 
       <h3>Settings</h3>
       <div className="admin-settings">

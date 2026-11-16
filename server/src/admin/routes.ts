@@ -155,6 +155,7 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
       hostName: r.singers.get(r.hostId ?? "")?.name ?? null,
       screenConnected: r.screens.size > 0,
       screenHost: (screenSocket?.data as { host?: string } | undefined)?.host ?? null,
+      cast: state.cast,
       paused: r.paused,
       settings: r.settings,
       nowPlaying: r.nowPlaying,
@@ -187,6 +188,23 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     if (!target || target.screen) return void res.status(400).json({ error: "Pick a singer in this room." });
     if (target.id === room.hostId) return void res.status(400).json({ error: `${target.name} is already the host.` });
     if (!room.assignHost(target.id)) return void res.status(400).json({ error: "Couldn't assign host." });
+    res.json({ room: report(room) });
+  });
+
+  // Pair a room with a YouTube link code, or stop casting (the same paths as the host's menu).
+  router.post("/rooms/:code/cast", async (req, res) => {
+    const room = rooms.get(req.params.code);
+    if (!room) return void res.status(404).json({ error: "No such room." });
+    const result = await room.pairCast(String(req.body?.code ?? ""));
+    if ("error" in result) return void res.status(400).json({ error: result.error });
+    res.json({ room: report(room) });
+  });
+
+  router.delete("/rooms/:code/cast", async (req, res) => {
+    const room = rooms.get(req.params.code);
+    if (!room) return void res.status(404).json({ error: "No such room." });
+    if (!room.lounge) return void res.status(400).json({ error: "No YouTube cast is paired." });
+    await room.useScreen("The admin stopped the YouTube cast.");
     res.json({ room: report(room) });
   });
 
