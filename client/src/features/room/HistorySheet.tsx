@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
-import { type QueueItem } from "@karaoke/shared";
-import Room from "./RoomPage.tsx";
+import { thumbUrl, type QueueItem } from "@karaoke/shared";
 import { Sheet } from "../../components/ui/Sheet.tsx";
 
 export const ago = (t?: number) => {
@@ -17,17 +16,18 @@ export function HistorySheet({
   onReplay,
   onClose,
 }: {
-  items: QueueItem[];
+  items: QueueItem[] | null; // null while loading
   queuedIds: Set<string>;
   onReplay: (item: QueueItem) => Promise<void>;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const list = items ?? [];
   // newest first (the server keeps it that way), 10 per page
   const [page, setPage] = useState(0);
-  const pages = Math.max(1, Math.ceil(items.length / HISTORY_PAGE));
+  const pages = Math.max(1, Math.ceil(list.length / HISTORY_PAGE));
   const current = Math.min(page, pages - 1); // stays valid if the list shrinks
-  const shown = items.slice(current * HISTORY_PAGE, (current + 1) * HISTORY_PAGE);
+  const shown = list.slice(current * HISTORY_PAGE, (current + 1) * HISTORY_PAGE);
   const listRef = useRef<HTMLUListElement>(null);
   const goTo = (p: number) => {
     setPage(p);
@@ -37,7 +37,9 @@ export function HistorySheet({
     <Sheet onClose={onClose} className="tall">
       <h2>Room history</h2>
       <p className="muted small">Most recent first. Replay adds the song to the back of the queue, sung by you.</p>
-      {items.length === 0 ? (
+      {items === null ? (
+        <p className="muted pad">Loading…</p>
+      ) : items.length === 0 ? (
         <p className="muted pad">No songs have been played yet.</p>
       ) : (
         <ul className="list scroll" ref={listRef}>
@@ -45,7 +47,7 @@ export function HistorySheet({
             const queued = queuedIds.has(h.videoId);
             return (
               <li key={h.id} className="song">
-                <img src={h.thumb} alt="" loading="lazy" />
+                <img src={thumbUrl(h.videoId)} alt="" loading="lazy" />
                 <div className="song-info">
                   <div className="song-title">{h.title}</div>
                   <div className="muted small">
@@ -74,7 +76,7 @@ export function HistorySheet({
             ‹
           </button>
           <span className="muted small">
-            {current * HISTORY_PAGE + 1}–{current * HISTORY_PAGE + shown.length} of {items.length} · newest first
+            {current * HISTORY_PAGE + 1}–{current * HISTORY_PAGE + shown.length} of {list.length} · newest first
           </span>
           <button className="icon-btn" disabled={current === pages - 1} onClick={() => goTo(current + 1)} aria-label="Older songs">
             ›

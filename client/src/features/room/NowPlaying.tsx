@@ -1,8 +1,7 @@
-import { type QueueItem } from "@karaoke/shared";
+import { thumbUrl, type QueueItem } from "@karaoke/shared";
+import { type TimedProgress } from "../../lib/useRoom.ts";
+import { usePlaybackTime } from "./usePlaybackTime.ts";
 import Scrubber from "../../components/Scrubber.tsx";
-import Search from "../search/Search.tsx";
-import Room from "./RoomPage.tsx";
-import { duration } from "../admin/format.ts";
 
 const RESTART_AFTER = 5; // keep in sync with Room.RESTART_AFTER on the server
 
@@ -64,7 +63,7 @@ export function NowPlaying(p: {
     );
   return (
     <section className="now">
-      <img src={p.item.thumb} alt="" />
+      <img src={thumbUrl(p.item.videoId)} alt="" />
       <div className="now-info">
         <div className="eyebrow">{p.paused ? "Paused" : p.item.external ? "Playing on YouTube from TV remote" : "Now singing"}</div>
         {!p.item.external && <div className="now-singer">{p.item.singerName}</div>}
@@ -94,5 +93,48 @@ export function NowPlaying(p: {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Now playing plus the host's seek bar. It owns the 250ms playback clock, so only this
+ * panel re-renders while a song plays, not the whole room page.
+ */
+export function PlaybackPanel(p: {
+  progress: TimedProgress | null;
+  item: QueueItem | null;
+  paused: boolean;
+  pending: boolean;
+  isHost: boolean;
+  canSkip: boolean;
+  canGoBack: boolean;
+  queueLength: number;
+  showSeek: boolean;
+  noScreen: boolean;
+  onSeek: (seconds: number) => void;
+  onStart: () => void;
+  onSkip: () => void;
+  onPause: () => void;
+  onRewind: () => void;
+}) {
+  const playback = usePlaybackTime(p.progress, p.item?.id, p.paused);
+  return (
+    <>
+      <NowPlaying
+        item={p.item}
+        paused={p.paused}
+        pending={p.pending}
+        isHost={p.isHost}
+        canSkip={p.canSkip}
+        time={playback.time}
+        canGoBack={p.canGoBack}
+        queueLength={p.queueLength}
+        onStart={p.onStart}
+        onSkip={p.onSkip}
+        onPause={p.onPause}
+        onRewind={p.onRewind}
+      />
+      {p.showSeek && <HostSeek time={playback.time} duration={playback.duration} known={playback.known} noScreen={p.noScreen} onSeek={p.onSeek} />}
+    </>
   );
 }

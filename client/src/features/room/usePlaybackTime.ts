@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { type TimedProgress } from "../../lib/useRoom.ts";
-import { duration } from "../admin/format.ts";
 
 /**
  * The TV reports its position ~1/s; interpolate between reports so the UI

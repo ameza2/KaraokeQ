@@ -1,14 +1,15 @@
-import { useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import type { VideoResult } from "@karaoke/shared";
 import { Link } from "react-router-dom";
 import { useTheme } from "../../lib/theme.ts";
 import Search from "../search/Search.tsx";
-import ScreenPlayer, { takenOverText, type PlayerHandle, type ReplacedBy } from "../screen/ScreenPlayer.tsx";
+import type { PlayerHandle } from "../screen/ScreenPlayer.tsx";
+import { takenOverText, type ReplacedBy } from "../screen/takeover.ts";
 import { useLanHost } from "../../lib/joinUrl.ts";
 import { isPlayerDevice, setPlayerDevice } from "../../lib/storage.ts";
 import { useRoom } from "../../lib/useRoom.ts";
-import Room from "./RoomPage.tsx";
-import { usePlaybackTime } from "./usePlaybackTime.ts";
-import { HostSeek, NowPlaying } from "./NowPlaying.tsx";
+import { PlaybackPanel } from "./NowPlaying.tsx";
+import { useHistory } from "./useHistory.ts";
 import { RenameDialog } from "./RenameDialog.tsx";
 import { MenuSheet } from "./MenuSheet.tsx";
 import { HistorySheet } from "./HistorySheet.tsx";
@@ -17,7 +18,9 @@ import { HostSheet } from "./HostSheet.tsx";
 import { CastSheet } from "./CastSheet.tsx";
 import { ShareSheet } from "./ShareSheet.tsx";
 import { Toasts } from "./Toasts.tsx";
-import { duration } from "../admin/format.ts";
+
+// The player (and its fullscreen controls) is only needed on devices that play the videos.
+const ScreenPlayer = lazy(() => import("../screen/ScreenPlayer.tsx"));
 
 export function RoomView({ code, name, onRename, screenMode = false }: { code: string; name: string; onRename: (n: string) => void; screenMode?: boolean }) {
   const { me, state, isHost, isScreenDevice, hostPowers, canControl, error, connected, toasts, toast, progress, setProgress, socket } = useRoom(code, name, screenMode);
@@ -33,8 +36,25 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
     setPlayerDevice(code, on);
     setPlayHere(on);
   };
-  // hooks must run before the early returns below
-  const playback = usePlaybackTime(progress, state?.nowPlaying?.id, !!state?.paused);
+  // Hooks must run before the early returns below. These keep Search and Queue (memoised) from
+  // re-rendering when only the playback position changes, which happens about once a second.
+  const queue = state?.queue;
+  const onStageVideoId = state?.nowPlaying?.videoId;
+  const queuedIds = useMemo(() => new Set((queue ?? []).map((q) => q.videoId).concat(onStageVideoId ?? [])), [queue, onStageVideoId]);
+  const addSong = useCallback(
+    (video: VideoResult) =>
+      new Promise<boolean>((resolve) =>
+        socket.current!.emit("queue:add", { video }, (r) => {
+          if (r.ok) toast({ level: "info", message: `Queued "${video.title}"` });
+          else toast({ level: "error", message: r.error });
+          resolve(r.ok);
+        }),
+      ),
+    [socket, toast],
+  );
+  const historyItems = useHistory(socket, sheet === "history", state?.historyRev);
+  const removeSong = useCallback((itemId: string) => socket.current!.emit("queue:remove", { itemId }), [socket]);
+  const moveSong = useCallback((itemId: string, toIndex: number) => socket.current!.emit("queue:move", { itemId, toIndex }), [socket]);
 
   if (error)
     return (
@@ -51,7 +71,6 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
   const s = socket.current!;
   const mine = state.queue.filter((q) => q.singerId === me).length;
   const myNext = state.queue.findIndex((q) => q.singerId === me);
-  const queuedIds = new Set(state.queue.map((q) => q.videoId).concat(state.nowPlaying?.videoId ?? []));
 
   const rename = () => setSheet("rename");
   const seekTo = (seconds: number) => {
@@ -104,6 +123,7 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
       </header>
 
       {playHere && (
+        <Suspense fallback={null}>
         <ScreenPlayer
           code={code}
           variant="embedded"
@@ -122,31 +142,26 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
             onSeek: seekTo,
           }}
         />
+        </Suspense>
       )}
 
-      <NowPlaying
+      <PlaybackPanel
+        progress={progress}
         item={state.nowPlaying}
         paused={state.paused}
         pending={state.pausePending}
         isHost={canControl}
         canSkip={canControl || state.nowPlaying?.singerId === me}
-        time={playback.time}
         canGoBack={state.canGoBack}
         queueLength={state.queue.length}
+        showSeek={canControl && !!state.nowPlaying}
+        noScreen={!casting && state.screens === 0}
+        onSeek={seekTo}
         onStart={() => s.emit("playback:resume")}
         onSkip={() => s.emit("playback:skip")}
         onPause={() => s.emit(state.paused ? "playback:resume" : "playback:pause")}
         onRewind={() => s.emit("playback:rewind")}
       />
-      {canControl && state.nowPlaying && (
-        <HostSeek
-          time={playback.time}
-          duration={playback.duration}
-          known={playback.known}
-          noScreen={!casting && state.screens === 0}
-          onSeek={seekTo}
-        />
-      )}
 
       {state.hostClaimable && !hostPowers && (
         <div className="banner">
@@ -217,15 +232,7 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
           mode={state.mode}
           queuedIds={queuedIds}
           mineCount={mine}
-          onAdd={(video) =>
-            new Promise<boolean>((resolve) =>
-              s.emit("queue:add", { video }, (r) => {
-                if (r.ok) toast({ level: "info", message: `Queued "${video.title}"` });
-                else toast({ level: "error", message: r.error });
-                resolve(r.ok);
-              }),
-            )
-          }
+          onAdd={addSong}
         />
       </div>
       {tab === "queue" && (
@@ -233,8 +240,8 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
           items={state.queue}
           me={me}
           isHost={canControl}
-          onRemove={(id) => s.emit("queue:remove", { itemId: id })}
-          onMove={(id, to) => s.emit("queue:move", { itemId: id, toIndex: to })}
+          onRemove={removeSong}
+          onMove={moveSong}
         />
       )}
 
@@ -244,7 +251,7 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
           screenMode={screenMode}
           code={code}
           screenUrl={screenUrl}
-          historyCount={state.history.length}
+          historyCount={state.historyCount}
           openControls={state.settings.openControls}
           onToggleOpenControls={() => s.emit("settings:update", { openControls: !state.settings.openControls })}
           fairQueue={state.settings.fairQueue}
@@ -264,7 +271,7 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
       )}
       {sheet === "history" && (
         <HistorySheet
-          items={state.history}
+          items={historyItems}
           queuedIds={new Set(state.queue.map((q) => q.videoId))}
           onReplay={(h) =>
             new Promise<void>((resolve) =>

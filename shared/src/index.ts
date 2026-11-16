@@ -43,7 +43,10 @@ export const MODE_LABELS: Record<OutputMode, { name: string; hint: string }> = {
   lounge: { name: "YouTube", hint: "Casting to the TV's YouTube app, so every video works." },
 };
 
-export interface QueueItem extends VideoResult {
+/** Thumbnails are not sent with queue items: build the URL from the video id (thumbUrl). */
+export const thumbUrl = (videoId: string) => `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
+export interface QueueItem extends Omit<VideoResult, "thumb"> {
   id: string;
   singerId: string;
   singerName: string;
@@ -70,7 +73,10 @@ export interface RoomState {
   queue: QueueItem[];
   singers: Singer[];
   screens: number; // connected /screen displays
-  history: QueueItem[]; // most recent first, capped
+  /** Songs in the room history (the list itself is fetched with "history:get" when someone opens it). */
+  historyCount: number;
+  /** Changes whenever the history does, so an open history list knows to refetch. */
+  historyRev: number;
   canGoBack: boolean; // ⏮ can return to the previous song (one step only)
   hostId: string | null;
   /** Device id of the room's active screen. That device gets the host's permissions. */
@@ -126,6 +132,8 @@ export interface ClientToServer {
   "queue:move": (p: { itemId: string; toIndex: number }) => void;
   "playback:skip": () => void;
   "playback:rewind": () => void;
+  /** The room history, most recent first (capped at 30). */
+  "history:get": (ack: (r: Ack<{ items: QueueItem[] }>) => void) => void;
   "history:replay": (p: { itemId: string }, ack: (r: Ack) => void) => void;
   "playback:pause": () => void;
   "playback:resume": () => void;

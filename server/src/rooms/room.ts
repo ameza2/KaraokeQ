@@ -106,6 +106,8 @@ export class Room {
   nowPlaying: QueueItem | null = null;
   paused = false;
   history: QueueItem[] = [];
+  /** Bumped whenever `history` changes (see RoomState.historyRev). */
+  historyRev = 0;
   singers = new Map<string, SingerRecord>();
   screens = new Set<string>();
   lastActive = Date.now();
@@ -214,7 +216,8 @@ export class Room {
       queue: this.queue,
       singers: [...this.singers.values()].map((s) => ({ id: s.id, name: s.name, online: s.sockets.size > 0, ...(s.screen ? { screen: true } : {}) })),
       screens: this.screens.size,
-      history: this.history,
+      historyCount: this.history.length,
+      historyRev: this.historyRev,
       canGoBack: this.canGoBack(),
       hostId: this.hostId,
       screenId: this.screens.size > 0 ? this.screenSinger : null,
@@ -275,14 +278,15 @@ export class Room {
    * song goes after every other singer's Nth song, so nobody can stack the queue.
    * Off: every request goes to the back (first come, first served).
    */
-  add(video: VideoResult, singerId: string, opts: { toBack?: boolean } = {}): string | null {
+  add(video: Omit<VideoResult, "thumb">, singerId: string, opts: { toBack?: boolean } = {}): string | null {
     const singer = this.singers.get(singerId);
     if (!singer) return "Join the room first.";
     const mine = this.queue.filter((q) => q.singerId === singerId);
     if (mine.length >= MAX_QUEUED_PER_SINGER) return `You already have ${MAX_QUEUED_PER_SINGER} songs queued.`;
     if (this.queue.some((q) => q.videoId === video.videoId)) return "That song is already in the queue.";
 
-    const item: QueueItem = { ...video, id: randomUUID(), singerId, singerName: singer.name, addedAt: Date.now() };
+    const { videoId, title, channel, duration } = video; // only these go to the room: no thumb, no extras
+    const item: QueueItem = { videoId, title, channel, duration, id: randomUUID(), singerId, singerName: singer.name, addedAt: Date.now() };
     let insertAt = this.queue.length;
     if (!opts.toBack && this.settings.fairQueue) {
       // The singer on stage has already used up their turn this round.
@@ -324,8 +328,8 @@ export class Room {
   replay(historyItemId: string, singerId: string): string | null {
     const h = this.history.find((x) => x.id === historyItemId);
     if (!h) return "That song is no longer in the history.";
-    const { videoId, title, channel, duration, thumb } = h;
-    return this.add({ videoId, title, channel, duration, thumb }, singerId, { toBack: true });
+    const { videoId, title, channel, duration } = h;
+    return this.add({ videoId, title, channel, duration }, singerId, { toBack: true });
   }
 
   /** Skipping the last song just ends it (nothing plays until more are queued). */
@@ -357,6 +361,7 @@ export class Room {
     this.previous = null;
     if (this.nowPlaying && !this.nowPlaying.external) this.queue.unshift(this.nowPlaying);
     this.history = this.history.filter((h) => h.id !== prev.id);
+    this.historyRev++;
     this.start(prev);
     return true;
   }
@@ -368,6 +373,7 @@ export class Room {
       this.playCount++;
       this.history.unshift({ ...this.nowPlaying, playedAt });
       this.history.length = Math.min(this.history.length, HISTORY_LIMIT);
+      this.historyRev++;
       this.previous = this.nowPlaying;
     }
     this.start(this.queue.shift() ?? null);

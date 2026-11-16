@@ -184,9 +184,9 @@ describe("playback permissions", () => {
     await wait(150);
     assert.equal(host.state.queue.length, 1);
     host.emit("playback:skip");
-    await host.waitState((s) => s.queue.length === 0 && s.history.length === 1);
+    await host.waitState((s) => s.queue.length === 0 && s.historyCount === 1);
     host.emit("playback:rewind"); // < 5s in: goes back one song
-    await host.waitState((s) => s.queue.length === 1 && s.history.length === 0);
+    await host.waitState((s) => s.queue.length === 1 && s.historyCount === 0);
   });
 });
 
@@ -255,5 +255,43 @@ describe("screen", () => {
     await until(() => tv.commands.length > 0, "a play command");
     assert.equal((tv.commands[0] as { action: string; item: { videoId: string } }).action, "play");
     assert.equal((tv.commands[0] as { item: { videoId: string } }).item.videoId, song.videoId);
+  });
+});
+
+describe("slim room state", () => {
+  it("keeps thumbnails and the history list out of room:state", async () => {
+    const { host } = await party();
+    await host.add(video("a"));
+    await host.add(video("b"));
+    const s = await host.waitState((s) => !!s.nowPlaying && s.queue.length === 1);
+    const json = JSON.stringify(s);
+    assert.ok(!json.includes("thumb"), "no thumb field anywhere in the state");
+    assert.ok(!("history" in s));
+    assert.equal(s.historyCount, 0);
+  });
+
+  it("serves the history on request and bumps historyRev when it changes", async () => {
+    const { host, others: [ben] } = await party("ben");
+    await host.add(video("one"));
+    await host.add(video("two"));
+    await host.add(video("three"));
+    const rev0 = host.state.historyRev;
+    host.emit("playback:skip");
+    await host.waitState((s) => s.historyCount === 1);
+    host.emit("playback:skip");
+    const s = await host.waitState((s) => s.historyCount === 2);
+    assert.ok(s.historyRev > rev0);
+    const r = await ben.ask<{ items: { title: string }[] }>("history:get");
+    assert.ok(r.ok);
+    assert.deepEqual(r.items.map((i) => i.title), ["Song two", "Song one"]); // newest first
+    // a replayed song comes back without a thumb too
+    const replay = await ben.ask("history:replay", { itemId: (r as { items: { id: string }[] }).items[0].id });
+    assert.ok(replay.ok);
+    assert.ok(!JSON.stringify(ben.state).includes("thumb"));
+  });
+
+  it("refuses history to a socket that has not joined", async () => {
+    const stranger = newClient("stranger");
+    assert.equal((await stranger.ask("history:get")).ok, false);
   });
 });

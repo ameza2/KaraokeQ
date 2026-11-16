@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Notice, Progress, QueueItem } from "@karaoke/shared";
+import { Progress, QueueItem } from "@karaoke/shared";
 import { LoungeOutput, pairCast } from "../playback/lounge.ts";
 import { isEmbeddable, videoInfo } from "../search.ts";
 import type { Room } from "./room.ts";
@@ -129,7 +129,6 @@ export class RoomCast {
       title: "Playing on YouTube from TV remote",
       channel: "",
       duration: "",
-      thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
       singerId: "",
       singerName: "TV remote",
       addedAt: Date.now(),

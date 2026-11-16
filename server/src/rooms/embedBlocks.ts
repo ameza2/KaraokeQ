@@ -1,4 +1,3 @@
-import type { QueueItem } from "@karaoke/shared";
 import type { Server } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
 import { getShareHost } from "../net.ts";

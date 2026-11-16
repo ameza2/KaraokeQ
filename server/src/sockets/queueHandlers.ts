@@ -13,7 +13,6 @@ export function queueHandlers({ socket, room, singerId, controlRoom }: SocketCon
       title: String(video.title ?? "").slice(0, 200),
       channel: String(video.channel ?? "").slice(0, 100),
       duration: String(video.duration ?? "").slice(0, 12),
-      thumb: `https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`,
     };
     if (r.mode === "screen" && knownNotEmbeddable(video.videoId))
       return ack({ ok: false, error: "The uploader blocks this video outside YouTube. Pick another version." });
@@ -28,6 +27,12 @@ export function queueHandlers({ socket, room, singerId, controlRoom }: SocketCon
 
   socket.on("queue:move", ({ itemId, toIndex }) => {
     controlRoom()?.move(itemId, Number(toIndex));
+  });
+
+  socket.on("history:get", (ack) => {
+    const r = room();
+    if (!r || !singerId()) return ack({ ok: false, error: "Not in a room." });
+    ack({ ok: true, items: r.history });
   });
 
   socket.on("history:replay", ({ itemId }, ack) => {

@@ -1,13 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { THEMES, THEME_LABELS, type AdminRoomReport, type RoomSettings, type QueueItem, type ThemeName } from "@karaoke/shared";
 import { api, type Run } from "../../lib/adminApi.ts";
 import { useLanHost } from "../../lib/joinUrl.ts";
-import Room from "../room/RoomPage.tsx";
-import { ago } from "../room/HistorySheet.tsx";
-import { Queue } from "../room/Queue.tsx";
 import { duration, clock, dateTime } from "./format.ts";
-import { people } from "./RoomsTab.tsx";
 
 export function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomReport; now: number; run: Run; onChanged: () => Promise<void>; onDelete: () => void }) {
   const lanHost = useLanHost();
@@ -177,7 +172,7 @@ export function RoomDetail({ room, now, run, onChanged, onDelete }: { room: Admi
               className="btn small"
               onClick={async () => {
                 const r = await run(() => api<{ plays: (Omit<QueueItem, "id" | "thumb"> & { itemId: string })[] }>("GET", `/rooms/${room.code}/plays`));
-                if (r) setAllPlays(r.plays.map((p) => ({ ...p, id: p.itemId, thumb: "" })).reverse());
+                if (r) setAllPlays(r.plays.map((p) => ({ ...p, id: p.itemId })).reverse());
               }}
             >
               Show all {room.playCount}

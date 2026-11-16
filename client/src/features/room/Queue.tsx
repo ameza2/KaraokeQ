@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { type QueueItem } from "@karaoke/shared";
 
-export function Queue(p: { items: QueueItem[]; me: string; isHost: boolean; onRemove: (id: string) => void; onMove: (id: string, to: number) => void }) {
+function QueueList(p: { items: QueueItem[]; me: string; isHost: boolean; onRemove: (id: string) => void; onMove: (id: string, to: number) => void }) {
   // Drag by the grip (mouse or touch). Rows stay in DOM order while dragging; the
   // dragged row follows the pointer and the rows it passes slide out of the way.
   const [drag, setDrag] = useState<{ id: string; from: number; to: number; dy: number } | null>(null);
@@ -145,3 +145,5 @@ export function Queue(p: { items: QueueItem[]; me: string; isHost: boolean; onRe
     </ol>
   );
 }
+
+export const Queue = memo(QueueList);
