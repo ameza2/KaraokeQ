@@ -13,6 +13,7 @@ import { adminRouter } from "./admin/routes.ts";
 import { Metrics } from "./metrics.ts";
 import { castLog } from "./playback/lounge.ts";
 import { publicRoutes } from "./http/publicRoutes.ts";
+import { errorHandler } from "./http/errors.ts";
 import { staticClient } from "./http/staticClient.ts";
 import { noStore, securityHeaders } from "./http/security.ts";
 import { cspHeader, cspReportRoute } from "./http/csp.ts";
@@ -57,6 +58,7 @@ publicRoutes(app, { rooms, playLog });
 cspReportRoute(app);
 app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));
 staticClient(app); // keep last: the /api 404 catch-all and the built client
+app.use(errorHandler); // after every route
 
 // ---------- Realtime ----------
 registerSocketHandlers(io, rooms);

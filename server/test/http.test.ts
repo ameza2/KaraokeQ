@@ -121,3 +121,21 @@ describe("socket limits", () => {
     c.close();
   });
 });
+
+describe("API errors answer with JSON", () => {
+  const post = (body: string) => fetch(`${server.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body });
+
+  it("a malformed JSON body is a 400, not an HTML error page", async () => {
+    const res = await post("{not json");
+    assert.equal(res.status, 400);
+    assert.match(res.headers.get("content-type") ?? "", /application\/json/);
+    assert.deepEqual(await res.json(), { error: "That request was not understood." });
+  });
+
+  it("a body over the limit is a 413 and leaks no stack trace", async () => {
+    const res = await post(JSON.stringify({ pad: "x".repeat(30_000) }));
+    assert.equal(res.status, 413);
+    const text = await res.text();
+    assert.deepEqual(JSON.parse(text), { error: "That request is too large." });
+  });
+});
