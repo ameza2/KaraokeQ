@@ -249,3 +249,7 @@ Planned work:
 1. YouTube cast: more testing on real TVs.
 2. Refactoring and a test suite.
 3. Source control: a remote and branching conventions.
+
+## License
+
+[MIT](LICENSE). This project is not affiliated with or endorsed by YouTube or Google. It uses YouTube's public player and an unofficial search and cast protocol, so follow YouTube's terms of service when you use it.
