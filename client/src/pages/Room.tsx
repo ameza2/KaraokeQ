@@ -185,6 +185,25 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
         />
       )}
 
+      {casting && state.cast && !state.cast.connected && (
+        <div className="banner">
+          The YouTube cast lost its connection to {state.cast.name}. It keeps trying, and the TV keeps playing its current video.
+          {hostPowers && (
+            <>
+              {" "}
+              To keep going now, open{" "}
+              <a href={screenUrl} target="_blank" rel="noreferrer">
+                <b>{lanHost}/r/{code}/screen</b>
+              </a>{" "}
+              on a screen (this stops the cast), or{" "}
+              <button className="link inline" onClick={() => s.emit("cast:unpair")}>
+                stop casting
+              </button>
+              .
+            </>
+          )}
+        </div>
+      )}
       {showScreenHelp && (
         <div className="banner">
           {screenReplacedBy ? takenOverText(screenReplacedBy) : "Nothing is playing the videos."} Open{" "}
