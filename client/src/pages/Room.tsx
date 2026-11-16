@@ -190,7 +190,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           <a href={screenUrl} target="_blank" rel="noreferrer">
             <b>{lanHost}/r/{code}/screen</b>
           </a>{" "}
-          on the TV, or{" "}
+          on a screen, or{" "}
           <button className="link inline" onClick={() => (screenReplaced ? playerHandle.current?.takeBack() : togglePlayHere(true))}>
             {screenReplaced ? "play here instead" : "play on this device"}
           </button>
@@ -253,7 +253,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           onToggleFairQueue={() => s.emit("settings:update", { fairQueue: !state.settings.fairQueue })}
           theme={state.settings.theme}
           onTheme={(theme) => s.emit("settings:update", { theme })}
-          tv={state.tv}
+          cast={state.cast}
           playHere={playHere}
           onTogglePlayHere={() => {
             togglePlayHere(!playHere);
@@ -299,13 +299,13 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           onClose={() => setSheet(null)}
         />
       )}
-      {sheet === "tv" && (
-        <TvSheet
-          tv={state.tv}
+      {sheet === "cast" && (
+        <CastSheet
+          cast={state.cast}
           casting={casting}
-          onPair={(tvCode) =>
+          onPair={(linkCode) =>
             new Promise<boolean>((resolve) =>
-              s.emit("tv:pair", { code: tvCode }, (r) => {
+              s.emit("cast:pair", { code: linkCode }, (r) => {
                 if (r.ok) toast({ level: "info", message: `Playing on ${r.name}` });
                 resolve(r.ok);
                 if (!r.ok) toast({ level: "error", message: r.error });
@@ -313,8 +313,8 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
             )
           }
           onUnpair={() => {
-            s.emit("tv:unpair");
-            toast({ level: "info", message: "Back on the browser screen" });
+            s.emit("cast:unpair");
+            toast({ level: "info", message: "Back on the screen" });
             setSheet(null);
           }}
           onClose={() => setSheet(null)}
@@ -366,7 +366,7 @@ function HostSeek({
   return (
     <div className="host-seek">
       <Scrubber time={time} duration={duration} onSeek={onSeek} />
-      {!known && <div className="muted small center">{noScreen ? "Open the TV screen to control playback." : "Waiting for the TV…"}</div>}
+      {!known && <div className="muted small center">{noScreen ? "Open the screen to control playback." : "Waiting for a screen…"}</div>}
     </div>
   );
 }
@@ -409,7 +409,7 @@ function NowPlaying(p: {
     <section className="now">
       <img src={p.item.thumb} alt="" />
       <div className="now-info">
-        <div className="eyebrow">{p.paused ? "Paused" : p.item.external ? "Playing on the TV" : "Now singing"}</div>
+        <div className="eyebrow">{p.paused ? "Paused" : p.item.external ? "Playing on YouTube from TV remote" : "Now singing"}</div>
         {!p.item.external && <div className="now-singer">{p.item.singerName}</div>}
         <div className="now-title">{p.item.title}</div>
       </div>
@@ -440,7 +440,7 @@ function NowPlaying(p: {
   );
 }
 
-type Sheet = null | "menu" | "history" | "share" | "rename" | "host" | "tv";
+type Sheet = null | "menu" | "history" | "share" | "rename" | "host" | "cast";
 
 function RenameDialog({ current, onSave, onClose }: { current: string; onSave: (n: string) => void; onClose: () => void }) {
   const [value, setValue] = useState(current);
@@ -510,7 +510,7 @@ function MenuSheet({
   onToggleFairQueue,
   theme,
   onTheme,
-  tv,
+  cast,
   playHere,
   onTogglePlayHere,
   onOpen,
@@ -528,7 +528,7 @@ function MenuSheet({
   onToggleFairQueue: () => void;
   theme: ThemeName;
   onTheme: (t: ThemeName) => void;
-  tv: RoomState["tv"];
+  cast: RoomState["cast"];
   playHere: boolean;
   onTogglePlayHere: () => void;
   onOpen: (s: Sheet) => void;
@@ -619,12 +619,12 @@ function MenuSheet({
                 Make someone else host<span className="muted small">Hand the room over to another singer</span>
               </span>
             </button>
-            <button className="menu-item" role="menuitem" onClick={() => onOpen("tv")}>
+            <button className="menu-item" role="menuitem" onClick={() => onOpen("cast")}>
               <span className="menu-icon">📡</span>
               <span className="menu-text">
-                Cast to TV (YouTube app)
+                Cast to YouTube
                 <span className="muted small">
-                  {tv ? `${tv.name}: ${tv.connected ? "connected" : "reconnecting…"}` : "Pair with the TV's \"Link with TV code\"; every video plays"}
+                  {cast ? `${cast.name}: ${cast.connected ? "connected" : "reconnecting…"}` : "Pair with the TV's YouTube app; every video plays"}
                 </span>
               </span>
             </button>
@@ -633,7 +633,7 @@ function MenuSheet({
                 <span className="menu-icon">{playHere ? "■" : "▶"}</span>
                 <span className="menu-text">
                   {playHere ? "Stop playing on this device" : "Play on this device"}
-                  <span className="muted small">{playHere ? "Use a TV screen instead" : "This phone or laptop becomes the screen"}</span>
+                  <span className="muted small">{playHere ? "Use another screen instead" : "This phone or laptop becomes the screen"}</span>
                 </span>
               </button>
             )}
@@ -641,7 +641,7 @@ function MenuSheet({
               <a className="menu-item" role="menuitem" href={screenUrl} target="_blank" rel="noreferrer" onClick={onClose}>
                 <span className="menu-icon">📺</span>
                 <span className="menu-text">
-                  Open TV screen<span className="muted small">Replaces any screen already playing</span>
+                  Open the screen<span className="muted small">Replaces any screen already playing</span>
                 </span>
               </a>
             )}
@@ -958,14 +958,14 @@ function HostSheet({
   );
 }
 
-function TvSheet({
-  tv,
+function CastSheet({
+  cast,
   casting,
   onPair,
   onUnpair,
   onClose,
 }: {
-  tv: RoomState["tv"];
+  cast: RoomState["cast"];
   casting: boolean;
   onPair: (code: string) => Promise<boolean>;
   onUnpair: () => void;
@@ -973,7 +973,7 @@ function TvSheet({
 }) {
   const [digits, setDigits] = useState("");
   const [busy, setBusy] = useState(false);
-  const pretty = digits.replace(/(d{3})(?=d)/g, "$1 ");
+  const pretty = digits.replace(/(\d{3})(?=\d)/g, "$1 ");
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (digits.length !== 12 || busy) return;
@@ -985,11 +985,11 @@ function TvSheet({
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <h2>Cast to TV</h2>
-        {tv && casting ? (
+        <h2>Cast to YouTube</h2>
+        {cast && casting ? (
           <>
             <p>
-              Playing on <b>{tv.name}</b> ({tv.connected ? "connected" : "reconnecting…"}). Every video works here, and ads follow the account the TV is signed in to.
+              Playing on <b>{cast.name}</b> ({cast.connected ? "connected" : "reconnecting…"}). Every video works here, and ads follow the account the TV is signed in to.
             </p>
             <div className="row">
               <button className="btn" onClick={onUnpair}>
@@ -1003,7 +1003,7 @@ function TvSheet({
         ) : (
           <form onSubmit={submit}>
             <ol className="muted small">
-              <li>Open the YouTube app on the TV (signed in to the Premium account).</li>
+              <li>Open the TV's YouTube app (signed in to the Premium account).</li>
               <li>Go to Settings → Link with TV code.</li>
               <li>Type the 12-digit code here.</li>
             </ol>
@@ -1012,14 +1012,14 @@ function TvSheet({
               inputMode="numeric"
               autoComplete="off"
               placeholder="123 456 789 012"
-              aria-label="TV code"
+              aria-label="Link code"
               value={pretty}
-              onChange={(e) => setDigits(e.target.value.replace(/D/g, "").slice(0, 12))}
+              onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 12))}
               autoFocus
             />
             <div className="row">
               <button className="btn primary" disabled={digits.length !== 12 || busy}>
-                {busy ? "Connecting…" : "Pair TV"}
+                {busy ? "Connecting…" : "Pair"}
               </button>
               <button type="button" className="btn" onClick={onClose}>
                 Cancel
@@ -1057,7 +1057,7 @@ function ShareSheet({ code, isHost, onClose }: { code: string; isHost: boolean; 
         </div>
         {isHost && (
           <p className="muted small">
-            TV screen: open <span className="break">{screenUrl}</span> in the TV's browser.
+            Screen: open <span className="break">{screenUrl}</span> in the TV's browser.
           </p>
         )}
       </div>

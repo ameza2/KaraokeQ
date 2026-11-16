@@ -238,7 +238,7 @@ export default function Search({
                 <div className="song-title">{v.title}</div>
                 <div className="muted small">
                   {v.channel} {v.duration && `· ${v.duration}`}
-                  {v.embeddable === false && <span className="tag">TV app only</span>}
+                  {v.embeddable === false && <span className="tag">YouTube only</span>}
                 </div>
               </div>
               <button

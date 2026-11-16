@@ -249,13 +249,13 @@ io.on("connection", (socket) => {
     if (r?.canControl(socket.data.singerId)) r.seek(Number(seconds));
   });
 
-  socket.on("tv:pair", async ({ code }, ack) => {
+  socket.on("cast:pair", async ({ code }, ack) => {
     const r = room();
     if (!r || !r.hasHostPowers(socket.data.singerId)) return ack({ ok: false, error: "Only the host can do that." });
-    const result = await r.pairTv(String(code ?? ""));
+    const result = await r.pairCast(String(code ?? ""));
     ack("error" in result ? { ok: false, error: result.error } : { ok: true, name: result.name });
   });
-  socket.on("tv:unpair", () => {
+  socket.on("cast:unpair", () => {
     const r = room();
     if (r?.hasHostPowers(socket.data.singerId)) void r.useScreen();
   });

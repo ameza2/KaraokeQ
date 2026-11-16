@@ -113,7 +113,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 |---|---|
 | **Room** | Room history · Invite singers (QR code and link) · Change your name |
 | **Settings** (host/screen) | **Everyone can control:** off by default; when on, everyone can skip, ⏮, seek, reorder and remove · **Fair queue:** on by default (see below) · **Room colour:** Orange, Blue, White or Green, on every device in the room |
-| **Host & screen** (host/screen) | Make someone else host · Play on this device · Open TV screen (always opens the shareable address) |
+| **Host & screen** (host/screen) | Make someone else host · Play on this device · Open the screen (always opens the shareable address) |
 
 ### Queue rules
 - **Fair queue** (on by default): each singer's Nth song plays after everyone else's Nth song, so people with fewer songs go first. The person singing counts as having used their turn.
@@ -196,7 +196,7 @@ YouTube refuses many videos (music labels especially: "uploader blocked embeddin
 - **Hostname:** at startup the server picks a name that resolves to its LAN IP: `192-168-0-5.nip.io`, or `sslip.io` as a backup.
   - These are free public DNS services that return the IP written in the name.
   - Only the private LAN IP is part of the lookup.
-- **Shared links:** QR codes, invite links, the "Open TV screen" menu item and the on-screen hints all use that name.
+- **Shared links:** QR codes, invite links, the "Open the screen" menu item and the on-screen hints all use that name.
 - **Pages opened by IP or `localhost`** move themselves to the hostname, carrying your name, songs and host status. They only do this if the device can reach the hostname.
 - **A screen still on an IP address or `localhost`:** if YouTube blocks the current video there:
   - The song is held, not skipped, and the video isn't marked as blocked.

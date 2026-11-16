@@ -3,7 +3,7 @@ import type { Server } from "socket.io";
 import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, RoomSettings, ScreenCommand, RoomState, ServerToClient, VideoResult } from "@karaoke/shared";
 import type { PlaybackOutput } from "./playback/output.ts";
 import { ScreenOutput } from "./playback/screen.ts";
-import { LoungeOutput, pairTv } from "./playback/lounge.ts";
+import { LoungeOutput, pairCast } from "./playback/lounge.ts";
 import { markNotEmbeddable, unmarkNotEmbeddable, videoInfo } from "./search.ts";
 import { getShareHost } from "./net.ts";
 import type { ScreenInfo } from "./playback/screen.ts";
@@ -29,7 +29,7 @@ export class Room {
   /** The host is a person (singerId), not a socket: every device they use gets host controls. */
   hostId: string | null = null;
   settings: RoomSettings = { openControls: false, fairQueue: true, theme: "orange" };
-  /** TV-created rooms have no host yet: the first phone to join claims it. */
+  /** Screen-created rooms have no host yet: the first phone to join claims it. */
   /** Videos that actually played on a screen in this room (so a later block is device-specific). */
   playedOk = new Set<string>();
   /** The most recent embed block (to spot a screen that blocks everything). */
@@ -221,7 +221,7 @@ export class Room {
       hostId: this.hostId,
       screenId: this.screens.size > 0 ? this.screenSinger : null,
       settings: this.settings,
-      tv: this.lounge ? { name: this.lounge.name, connected: this.lounge.connected } : null,
+      cast: this.lounge ? { name: this.lounge.name, connected: this.lounge.connected } : null,
     };
   }
 
@@ -445,19 +445,19 @@ export class Room {
     this.broadcast();
   }
 
-  // ---------- TV casting (YouTube Lounge) ----------
+  // ---------- YouTube cast (Lounge protocol) ----------
 
   private pairing = false;
 
   /**
-   * Pair the TV's YouTube app and move playback there, from the current position.
+   * Pair the YouTube cast and move playback there, from the current position.
    * Returns an error message, or null on success.
    */
-  async pairTv(rawCode: string): Promise<{ error: string } | { name: string }> {
+  async pairCast(rawCode: string): Promise<{ error: string } | { name: string }> {
     if (this.pairing) return { error: "Already pairing, one moment." };
     this.pairing = true;
     try {
-      const lounge = new LoungeOutput(await pairTv(rawCode));
+      const lounge = new LoungeOutput(await pairCast(rawCode));
       try {
         await lounge.connect();
       } catch (err) {
@@ -473,11 +473,11 @@ export class Room {
       void this.screenOutput.stop(); // the browser screen goes idle
       if (this.nowPlaying) void lounge.play(this.nowPlaying, { startAt, paused: this.paused });
       void lounge.syncNow(); // picks up a video the TV was already playing
-      this.say(`TV paired: "${lounge.name}", playing on the TV app`);
+      this.say(`YouTube cast paired: "${lounge.name}"`);
       this.broadcast();
       return { name: lounge.name };
     } catch (err) {
-      this.say(`TV pairing failed: ${(err as Error).message}`);
+      this.say(`YouTube cast pairing failed: ${(err as Error).message}`);
       return { error: (err as Error).message };
     } finally {
       this.pairing = false;
@@ -491,8 +491,8 @@ export class Room {
     lounge.on("error", (itemId: string) => {
       const item = this.nowPlaying;
       if (!item || item.id !== itemId) return;
-      this.say(`TV didn't start "${item.title}" (${item.videoId}), skipping`);
-      this.notify(item.singerId, { level: "error", message: `"${item.title}" didn't start on the TV and was skipped.` });
+      this.say(`YouTube cast didn't start "${item.title}" (${item.videoId}), skipping`);
+      this.notify(item.singerId, { level: "error", message: `"${item.title}" didn't start on YouTube and was skipped.` });
       this.advance();
     });
     // the TV reports an external video's position as "external": map it to the room's item
@@ -508,7 +508,7 @@ export class Room {
     lounge.on("external-idle", () => {
       // back on the TV's home screen: nothing plays, the queue waits
       if (!this.nowPlaying?.external) return;
-      this.say("TV left its own video; queue on hold");
+      this.say("Cast left its own video; queue on hold");
       this.clearStage();
     });
     // The TV left one of our songs. At the end that's just the end; earlier it was a
@@ -518,19 +518,19 @@ export class Room {
       if (!item || item.id !== itemId) return;
       const d = this.progress?.itemId === item.id ? this.progress.duration : 0;
       if (d && this.currentTime() >= d - 8) return this.advance();
-      this.say(`TV left "${item.title}" before the end, dropped; queue on hold`);
+      this.say(`Cast left "${item.title}" before the end, dropped; queue on hold`);
       this.clearStage();
-      this.notify(item.singerId, { level: "info", message: `"${item.title}" was stopped on the TV.` });
-      if (this.hostId && this.hostId !== item.singerId) this.notify(this.hostId, { level: "info", message: `"${item.title}" was stopped on the TV. The queue is on hold; press play to carry on.` });
+      this.notify(item.singerId, { level: "info", message: `"${item.title}" was stopped on YouTube.` });
+      if (this.hostId && this.hostId !== item.singerId) this.notify(this.hostId, { level: "info", message: `"${item.title}" was stopped on YouTube. The queue is on hold; press play to carry on.` });
     });
     lounge.on("link", (up: boolean) => {
       // The TV keeps playing when our link drops, so the song and its clock carry on as they were.
-      this.say(`TV ${up ? "connected" : "disconnected"}`);
+      this.say(`YouTube cast ${up ? "connected" : "disconnected"}`);
       if (up) void lounge.syncNow();
       this.broadcast();
     });
     lounge.on("lost", () => {
-      if (this.hostId) this.notify(this.hostId, { level: "error", message: "Lost contact with the TV. It keeps playing its current video; reconnecting…" });
+      if (this.hostId) this.notify(this.hostId, { level: "error", message: "Lost contact with the YouTube cast. It keeps playing its current video; reconnecting…" });
     });
   }
 
@@ -546,16 +546,16 @@ export class Room {
   private takeOver(videoId: string) {
     if (this.nowPlaying?.videoId === videoId && this.nowPlaying.external) return;
     const replaced = this.nowPlaying && !this.nowPlaying.external ? this.nowPlaying : null; // dropped: the change was deliberate
-    if (replaced) this.notify(replaced.singerId, { level: "info", message: `"${replaced.title}" was replaced by another video on the TV.` });
+    if (replaced) this.notify(replaced.singerId, { level: "info", message: `"${replaced.title}" was replaced by another video from the TV remote.` });
     const item: QueueItem = {
       id: randomUUID(),
       videoId,
-      title: "Playing on the TV",
+      title: "Playing on YouTube from TV remote",
       channel: "",
       duration: "",
       thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
       singerId: "",
-      singerName: "On the TV",
+      singerName: "TV remote",
       addedAt: Date.now(),
       external: true,
     };
@@ -563,7 +563,7 @@ export class Room {
     this.paused = false;
     this.progress = null;
     this.progressAt = null;
-    this.say(`TV started its own video (${videoId})${replaced ? `, replacing "${replaced.title}" (dropped)` : ""}`);
+    this.say(`Cast started its own video (${videoId})${replaced ? `, replacing "${replaced.title}" (dropped)` : ""}`);
     this.broadcast();
     void videoInfo(videoId).then((info) => {
       if (!info || this.nowPlaying?.id !== item.id) return;
@@ -602,7 +602,7 @@ export class Room {
     } else void lounge.stop();
     await this.dropLounge();
     this.mode = "screen";
-    this.say(message ? `TV unpaired: ${message}` : "TV unpaired");
+    this.say(message ? `YouTube cast unpaired: ${message}` : "YouTube cast unpaired");
     if (this.nowPlaying) void this.screenOutput.play(this.nowPlaying, { startAt, paused: this.paused });
     if (message && this.hostId) this.notify(this.hostId, { level: "error", message });
     this.broadcast();

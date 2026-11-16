@@ -39,8 +39,8 @@ export interface SearchPage {
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 export const MODE_LABELS: Record<OutputMode, { name: string; hint: string }> = {
-  screen: { name: "Web player", hint: "Only showing videos that can play on the TV screen page." },
-  lounge: { name: "YouTube TV app", hint: "Casting to the TV's YouTube app, so every video works." },
+  screen: { name: "Web Player", hint: "Only showing videos that can play in the browser." },
+  lounge: { name: "YouTube", hint: "Casting to the TV's YouTube app, so every video works." },
 };
 
 export interface QueueItem extends VideoResult {
@@ -76,8 +76,8 @@ export interface RoomState {
   /** Device id of the room's active screen. That device gets the host's permissions. */
   screenId: string | null; // singerId of the current host (null until someone claims a TV room)
   settings: RoomSettings;
-  /** A TV paired through "Link with TV code" (mode "lounge" while it's the output). */
-  tv: { name: string; connected: boolean } | null;
+  /** The YouTube cast, paired through the TV's "Link with TV code" (mode "lounge" while it's the output). */
+  cast: { name: string; connected: boolean } | null;
 }
 
 // Commands the server sends to a /screen display.
@@ -127,9 +127,9 @@ export interface ClientToServer {
   "host:transfer": (p: { singerId: string }, ack: (r: Ack) => void) => void;
   "settings:update": (p: Partial<RoomSettings>) => void;
   /** Host/screen: pair the TV's YouTube app with the 12-digit "Link with TV code" and play there. */
-  "tv:pair": (p: { code: string }, ack: (r: Ack<{ name: string }>) => void) => void;
+  "cast:pair": (p: { code: string }, ack: (r: Ack<{ name: string }>) => void) => void;
   /** Host/screen: stop casting and go back to the browser screen. */
-  "tv:unpair": () => void;
+  "cast:unpair": () => void;
   "screen:progress": (p: Progress) => void;
   "screen:join": (p: { code: string; deviceId?: string; host?: string }, ack: (r: Ack<{ state: RoomState }>) => void) => void;
   "screen:event": (e: ScreenEvent) => void;

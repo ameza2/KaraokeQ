@@ -7,7 +7,7 @@ import type { PlayOptions, PlaybackOutput } from "./output.ts";
  * Drives the TV's native YouTube app through YouTube's (unofficial) "Lounge"
  * protocol, the same one the phone "cast" button uses.
  *
- *  - pairTv(code)    "Link with TV code" -> screenId + loungeToken
+ *  - pairCast(code)    "Link with TV code" -> screenId + loungeToken
  *  - LoungeOutput    bind session, one setPlaylist per song, long-poll event stream
  *
  * The queue stays in the room; the TV only ever gets one video at a time. Because
@@ -28,7 +28,7 @@ const POLL_NOW_PLAYING_MS = 3_000;
 const SWITCH_GRACE_MS = 20_000; // after sending a song, events about other videos are the old one
 const IDLE_AFTER_MS = 4_000; // "stopped" must last this long before we treat the TV as idle
 
-export interface TvScreen {
+export interface CastTarget {
   screenId: string;
   loungeToken: string;
   name: string;
@@ -38,7 +38,7 @@ const form = (o: Record<string, string>) => new URLSearchParams(o).toString();
 const FORM = { "Content-Type": "application/x-www-form-urlencoded" };
 
 /** Exchange the 12-digit "Link with TV code" for the TV's lounge credentials. */
-export async function pairTv(rawCode: string): Promise<TvScreen> {
+export async function pairCast(rawCode: string): Promise<CastTarget> {
   const code = String(rawCode ?? "").replace(/\D/g, "");
   if (code.length !== 12) throw new Error("The TV code is 12 digits (Settings → Link with TV code).");
   const res = await fetch(`${BASE}/pairing/get_screen`, {
@@ -138,7 +138,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
   private idleTimer: NodeJS.Timeout | null = null;
   private tvVideoId = "";
 
-  constructor(readonly screen: TvScreen) {
+  constructor(readonly screen: CastTarget) {
     super();
     this.token = screen.loungeToken;
   }

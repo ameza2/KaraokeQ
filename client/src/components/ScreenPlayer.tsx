@@ -63,7 +63,7 @@ const hasUserActivation = () => (navigator as Navigator & { userActivation?: { h
 /**
  * The room's playback output. Joins as the room's (single) screen and plays
  * whatever the server says.
- *  - variant "tv": full-screen display with QR, up-next and a seek bar
+ *  - variant "screen": full-screen display with QR, up-next and a seek bar
  *  - variant "embedded": compact 16:9 player inside the host's room page
  */
 export default function ScreenPlayer({
@@ -76,7 +76,7 @@ export default function ScreenPlayer({
   handle,
 }: {
   code: string;
-  variant: "tv" | "embedded";
+  variant: "screen" | "embedded";
   deviceId?: string; // the room-page identity of this device (gets host powers while it's the screen)
   autoFull?: boolean; // open straight into full screen (screen mode)
   controls?: PlayerControls;
@@ -84,7 +84,7 @@ export default function ScreenPlayer({
   onReplacedChange?: (replaced: boolean) => void;
   handle?: MutableRefObject<PlayerHandle | null>;
 }) {
-  const tv = variant === "tv";
+  const isScreen = variant === "screen";
   const joinUrl = useJoinUrl(code);
   const [started, setStarted] = useState(hasUserActivation);
   const startedRef = useRef(started); // sound allowed (the user has clicked)
@@ -392,12 +392,12 @@ export default function ScreenPlayer({
     controlsRef.current?.onTogglePause();
   };
 
-  if (error) return tv ? <main className="screen-msg">{error}</main> : <div className="embed-note error">{error}</div>;
+  if (error) return isScreen ? <main className="screen-msg">{error}</main> : <div className="embed-note error">{error}</div>;
 
   // Note: the player stays mounted while replaced; unmounting it would kill the
   // YouTube iframe and "take it back" would then have nothing to play on.
   const replacedNote = replaced &&
-    (tv ? (
+    (isScreen ? (
       <main className="screen-msg replaced">
         <div className="stack center" style={{ maxWidth: 520 }}>
           <div className="orb" aria-hidden="true" />
@@ -451,16 +451,16 @@ export default function ScreenPlayer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [full]);
-  const big = tv || full; // TV-style overlays
+  const big = isScreen || full; // screen-style overlays
 
   const upNext = state?.queue.slice(0, 5) ?? [];
   const playing = !!current;
 
   return (
     <>
-    {!tv && !onReplacedChange && replacedNote}
-    <div ref={rootEl} className={tv ? "screen" : `embed${full ? " full" : ""}${fsBar && !uiVisible ? " ui-hidden" : ""}`} hidden={!tv && replaced}>
-      {tv && replacedNote}
+    {!isScreen && !onReplacedChange && replacedNote}
+    <div ref={rootEl} className={isScreen ? "screen" : `embed${full ? " full" : ""}${fsBar && !uiVisible ? " ui-hidden" : ""}`} hidden={!isScreen && replaced}>
+      {isScreen && replacedNote}
       <div className={`player ${playing ? "" : "hidden"}`}>
         <div ref={playerEl} />
       </div>
@@ -519,7 +519,7 @@ export default function ScreenPlayer({
             </div>
           )}
           {state?.paused && <div className="paused-badge">Paused</div>}
-          {big && !fsBar && <TvSeekBar time={time} duration={duration} paused={!!state?.paused} onSeek={seek} />}
+          {big && !fsBar && <ScreenSeekBar time={time} duration={duration} paused={!!state?.paused} onSeek={seek} />}
           {/* catches pointer input over the iframe (which would otherwise swallow it) */}
           <div className="seek-catcher" onPointerUp={onVideoPointer} />
           {fsBar && controls && (
@@ -589,7 +589,7 @@ export default function ScreenPlayer({
         </button>
       )}
 
-      {!tv && started && !fsBar && (
+      {!isScreen && started && !fsBar && (
         <button className="full-btn" onClick={toggleFull} aria-label={full ? "Exit full screen" : "Full screen"}>
           {full ? "✕" : "⛶"}
         </button>
@@ -646,8 +646,8 @@ function FullControls({
   );
 }
 
-/** TV seek bar: auto-hides while playing; ←/→ (TV remotes) jump 10 seconds. */
-function TvSeekBar({ time, duration, paused, onSeek }: { time: number; duration: number; paused: boolean; onSeek: (t: number) => void }) {
+/** Screen seek bar: auto-hides while playing; ←/→ (remotes) jump 10 seconds. */
+function ScreenSeekBar({ time, duration, paused, onSeek }: { time: number; duration: number; paused: boolean; onSeek: (t: number) => void }) {
   const [visible, setVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const poke = () => {
