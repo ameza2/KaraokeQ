@@ -57,6 +57,9 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 | `PORT` | `3001` | Server port |
 | `KARAOKE_HOST` | auto (`<ip>.nip.io`) | Hostname to share, if your network blocks nip.io/sslip.io (see below) |
 | `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, performance history, settings and the admin login are kept |
+| `KARAOKE_MAX_ROOMS` | `200` | Rooms the server keeps open at once; creating more answers 503 |
+| `KARAOKE_ROOM_CREATE_PER_MIN` | `20` | Rooms one address may create per minute |
+| `CHROME_PATH` | standard install location | Only for `npm run smoke`: the Chrome executable to drive |
 | `API_URL` | `http://localhost:3001` | Dev only: where Vite proxies the API |
 
 On Windows PowerShell: `$env:PORT = "4000"; npm start`.
@@ -64,6 +67,8 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 ### Other commands
 - `npm run typecheck`: type-checks the server and client.
 - `npm run build`: production build of the client.
+- `npm test`: server tests (each run starts a real server on a free port).
+- `npm run smoke`: after `npm run build`, drives the built app in Chrome at phone width (needs Chrome installed; set `CHROME_PATH` if it is somewhere unusual).
 
 ### Troubleshooting startup
 - **Phones can't connect:** allow Node.js through Windows Firewall on **private** networks, and make sure the phones are on the same Wi-Fi (not a guest network).
