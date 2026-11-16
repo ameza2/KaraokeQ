@@ -191,7 +191,7 @@ export class Room {
     output.on("ended", (itemId: string) => {
       if (this.nowPlaying?.id === itemId) this.advance();
     });
-    output.on("error", (itemId: string, errorCode?: number, screen?: ScreenInfo, played?: boolean) =>
+    output.on("player-error", (itemId: string, errorCode?: number, screen?: ScreenInfo, played?: boolean) =>
       this.embedBlocks.handleError(itemId, errorCode, screen, played));
     // The person at an IP-address screen chose to skip the blocked song.
     output.on("skip-blocked", (itemId: string) => {

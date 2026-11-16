@@ -15,8 +15,9 @@ const castOwners = new Map<string, Room>();
 export class RoomCast {
   constructor(private room: Room) {}
 
-
   private pairing = false;
+  /** Set when the room is gone: a pairing still in flight must not attach to it. */
+  private disposed = false;
   /** Songs may have been queued that only play on YouTube: check them when a screen takes over. */
   private needsEmbedCheck = false;
 
@@ -28,33 +29,19 @@ export class RoomCast {
     if (this.room.lounge) return { error: "Stop casting first, then pair the new code." };
     if (this.pairing) return { error: "Already pairing, one moment." };
     this.pairing = true;
+    let claimed: string | null = null; // the TV's screen id, once this room is its owner
+    let lounge: LoungeOutput | null = null;
     try {
-      const target = await pairCast(rawCode);
-      const lounge = new LoungeOutput(target);
-      try {
-        await lounge.connect();
-      } catch (err) {
-        await lounge.dispose();
-        throw err;
-      }
-      // The newest connection wins: another room casting to this TV loses it (and must not
-      // stop the video this room is about to start), and any joined screen is replaced.
-      const rival = castOwners.get(target.screenId);
-      if (rival && rival !== this.room) await rival.useScreen("The YouTube cast moved to another room. Pair again or open a screen.", { leaveTv: true });
-      castOwners.set(target.screenId, this.room);
-      this.needsEmbedCheck = true;
-      this.room.replaceScreens(null, "cast");
-      this.room.freezeProgress();
-      const startAt = this.room.currentTime();
-      this.room.lounge = lounge;
-      this.wireLounge(lounge);
-      this.room.mode = "lounge";
-      if (this.room.nowPlaying) void lounge.play(this.room.nowPlaying, { startAt, paused: this.room.paused });
-      void lounge.syncNow(); // picks up a video the TV was already playing
-      this.room.say(`YouTube cast paired: "${lounge.name}"`);
-      this.room.broadcast();
+      const session = await this.openSession(rawCode);
+      lounge = session.lounge;
+      claimed = session.screenId;
+      await this.claimTv(session.screenId);
+      if (this.disposed) throw new Error("This room was closed.");
+      this.startCast(lounge);
       return { name: lounge.name };
     } catch (err) {
+      if (lounge && this.room.lounge !== lounge) await lounge.dispose();
+      if (claimed && castOwners.get(claimed) === this.room && this.room.lounge !== lounge) castOwners.delete(claimed);
       this.room.say(`YouTube cast pairing failed: ${(err as Error).message}`);
       return { error: (err as Error).message };
     } finally {
@@ -62,11 +49,54 @@ export class RoomCast {
     }
   }
 
+  /** Look the TV up by its link code and open a session with it. */
+  private async openSession(rawCode: string): Promise<{ lounge: LoungeOutput; screenId: string }> {
+    const target = await pairCast(rawCode);
+    const lounge = new LoungeOutput(target);
+    try {
+      await lounge.connect();
+    } catch (err) {
+      await lounge.dispose();
+      throw err;
+    }
+    if (this.disposed) {
+      await lounge.dispose();
+      throw new Error("This room was closed.");
+    }
+    return { lounge, screenId: target.screenId };
+  }
+
+  /**
+   * The newest connection wins: this room becomes the TV's owner right away (so a second room
+   * pairing the same TV while we wait sees us, not nobody), and the previous owner loses it
+   * without stopping the video this room is about to start.
+   */
+  private async claimTv(screenId: string) {
+    const rival = castOwners.get(screenId);
+    castOwners.set(screenId, this.room);
+    if (rival && rival !== this.room) await rival.useScreen("The YouTube cast moved to another room. Pair again or open a screen.", { leaveTv: true });
+  }
+
+  /** Make the TV the room's output and move the current song to it, from where it is. */
+  private startCast(lounge: LoungeOutput) {
+    this.needsEmbedCheck = true;
+    this.room.replaceScreens(null, "cast"); // any joined screen is replaced
+    this.room.freezeProgress();
+    const startAt = this.room.currentTime();
+    this.room.lounge = lounge;
+    this.wireLounge(lounge);
+    this.room.mode = "lounge";
+    if (this.room.nowPlaying) void lounge.play(this.room.nowPlaying, { startAt, paused: this.room.paused });
+    void lounge.syncNow(); // picks up a video the TV was already playing
+    this.room.say(`YouTube cast paired: "${lounge.name}"`);
+    this.room.broadcast();
+  }
+
   private wireLounge(lounge: LoungeOutput) {
     lounge.on("ended", (itemId: string) => {
       if (this.room.nowPlaying?.id === itemId) this.room.advance();
     });
-    lounge.on("error", (itemId: string) => {
+    lounge.on("start-failed", (itemId: string) => {
       const item = this.room.nowPlaying;
       if (!item || item.id !== itemId) return;
       this.room.say(`YouTube cast didn't start "${item.title}" (${item.videoId}), skipping`);
@@ -220,6 +250,7 @@ export class RoomCast {
   }
 
   async dispose() {
+    this.disposed = true;
     await this.dropLounge();
   }
 }

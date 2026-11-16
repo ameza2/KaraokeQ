@@ -14,7 +14,8 @@ export interface PlayOptions {
  *
  * Events:
  *   "ended"  (itemId: string)
- *   "error"  (itemId: string, errorCode?: number)
+ *   Screen output only: "player-error" (itemId, errorCode?, screen?, played?)
+ *   Lounge output only: "start-failed" (itemId)
  */
 export interface PlaybackOutput extends EventEmitter {
   readonly kind: "screen" | "lounge";

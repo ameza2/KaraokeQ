@@ -36,7 +36,7 @@ export class ScreenOutput extends EventEmitter implements PlaybackOutput {
   /** Called by the socket layer when the screen reports a player event. */
   handleEvent(e: ScreenEvent, screen: ScreenInfo) {
     if (e.type === "ended") this.emit("ended", e.itemId);
-    else if (e.type === "error") this.emit("error", e.itemId, e.errorCode, screen, !!e.played);
+    else if (e.type === "error") this.emit("player-error", e.itemId, e.errorCode, screen, !!e.played);
     else if (e.type === "skip-blocked") this.emit("skip-blocked", e.itemId);
   }
 

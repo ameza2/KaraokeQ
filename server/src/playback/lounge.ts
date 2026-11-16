@@ -15,7 +15,7 @@ import type { PlayOptions, PlaybackOutput } from "./output.ts";
  * (so a Premium account on the TV means no ads) and embed blocks don't apply.
  * Nothing here is stored on disk: the pairing lives with the room.
  *
- * Events: "ended"(itemId), "error"(itemId), "progress"({itemId,time,duration}),
+ * Events: "ended"(itemId), "start-failed"(itemId), "progress"({itemId,time,duration}),
  * "remote-state"("playing" | "paused") when someone uses the TV remote,
  * "link"(connected) and "lost" (the TV stayed unreachable for LOST_AFTER_MS).
  */
@@ -210,6 +210,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
       this.token = await refreshToken(this.screen.screenId);
       res = await post();
     }
+    if (this.closed) return; // disposed while the bind was in flight: start nothing
     if (!res.ok) throw new Error(`The TV didn't accept the connection (${res.status}).`);
     this.consume(new ChunkParser().push(await res.text()));
     if (!this.sid || !this.gsid) throw new Error("The TV's YouTube app didn't answer. Open YouTube on the TV and try again.");
@@ -303,26 +304,36 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
     for (const [idx, ev] of events) {
       if (typeof idx === "number" && idx > this.aid) this.aid = idx;
       const [name, data] = ev as [string, any];
-      this.emit("raw", name, data);
-      if (castLog.verbose && !["noop", "c", "S", "onVideoQualityChanged", "onAudioTrackChanged", "onHasPreviousNextChanged", "autoplayUpNext", "onAutoplayModeChanged", "onVolumeChanged", "onSubtitlesTrackChanged"].includes(name)) console.log(`lounge[${this.name}] event #${idx} ${name} ${JSON.stringify(data)?.slice(0, 300)}`);
-      switch (name) {
-        case "c":
-          this.sid = String(data);
-          break;
-        case "S":
-          this.gsid = String(data);
-          break;
-        case "loungeStatus":
-          this.setLink(true);
-          break;
-        case "loungeScreenDisconnected":
-          this.setLink(false);
-          break;
-        case "nowPlaying":
-        case "onStateChange":
-          this.onState(name, data ?? {});
-          break;
+      // A bug in a listener (the room's code) must not look like a dropped link: the caller
+      // would rebind a healthy session. Log it and carry on with the next event.
+      try {
+        this.handleEvent(idx, name, data);
+      } catch (err) {
+        console.error(`lounge[${this.name}] handling "${name}" failed:`, err);
       }
+    }
+  }
+
+  private handleEvent(idx: number, name: string, data: any) {
+    this.emit("raw", name, data);
+    if (castLog.verbose && !["noop", "c", "S", "onVideoQualityChanged", "onAudioTrackChanged", "onHasPreviousNextChanged", "autoplayUpNext", "onAutoplayModeChanged", "onVolumeChanged", "onSubtitlesTrackChanged"].includes(name)) console.log(`lounge[${this.name}] event #${idx} ${name} ${JSON.stringify(data)?.slice(0, 300)}`);
+    switch (name) {
+      case "c":
+        this.sid = String(data);
+        break;
+      case "S":
+        this.gsid = String(data);
+        break;
+      case "loungeStatus":
+        this.setLink(true);
+        break;
+      case "loungeScreenDisconnected":
+        this.setLink(false);
+        break;
+      case "nowPlaying":
+      case "onStateChange":
+        this.onState(name, data ?? {});
+        break;
     }
   }
 
@@ -458,7 +469,7 @@ export class LoungeOutput extends EventEmitter implements PlaybackOutput {
       cur.watchdog = setTimeout(() => {
         if (this.current === cur && !cur.started) {
           this.finish();
-          this.emit("error", cur.item.id);
+          this.emit("start-failed", cur.item.id);
         }
       }, START_TIMEOUT_MS);
       cur.watchdog.unref();
