@@ -1,0 +1,74 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { after, before, describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { Client, createRoom, startServer, video, type TestServer } from "./harness.ts";
+
+let server: TestServer;
+before(async () => {
+  server = await startServer();
+});
+after(async () => {
+  await server.stop();
+});
+
+const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
+
+describe("HTTP headers", () => {
+  it("sets baseline security headers and hides the framework", async () => {
+    const res = await fetch(`${server.url}/api/info`);
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(res.headers.get("x-frame-options"), "DENY");
+    assert.equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+    assert.equal(res.headers.get("x-powered-by"), null);
+  });
+
+  it("never caches admin responses", async () => {
+    const res = await fetch(`${server.url}/api/admin/session`);
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  });
+
+  it("returns JSON for unknown API paths", async () => {
+    const res = await fetch(`${server.url}/api/nope`);
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "Not found." });
+  });
+
+  it("caches hashed assets for good and always re-checks index.html", { skip: !existsSync(path.join(dist, "index.html")) }, async () => {
+    const page = await fetch(`${server.url}/`);
+    assert.equal(page.headers.get("cache-control"), "no-cache");
+    const html = await page.text();
+    const asset = /\/assets\/[\w.-]+\.js/.exec(html)?.[0];
+    assert.ok(asset, "index.html links a hashed script");
+    const js = await fetch(`${server.url}${asset}`);
+    assert.match(js.headers.get("cache-control") ?? "", /immutable/);
+    const deep = await fetch(`${server.url}/r/ABCD`); // SPA fallback
+    assert.equal(deep.headers.get("cache-control"), "no-cache");
+  });
+
+  it("rejects an oversized JSON body", async () => {
+    const res = await fetch(`${server.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ by: "x".repeat(30_000) }) });
+    assert.equal(res.status, 413);
+  });
+});
+
+describe("socket limits", () => {
+  it("answers a flood with 'slow down' instead of working through it", async () => {
+    const { code } = await createRoom(server.url);
+    const c = new Client(server.url, "flooder");
+    await c.join(code);
+    const replies = await Promise.all(Array.from({ length: 300 }, () => c.add(video())));
+    const limited = replies.filter((r) => !r.ok && /slow down/i.test(r.error));
+    assert.ok(limited.length > 100, `expected many limited replies, got ${limited.length}`);
+    c.close();
+  });
+
+  it("does not limit normal use", async () => {
+    const { code } = await createRoom(server.url);
+    const c = new Client(server.url, "normal");
+    await c.join(code);
+    for (let i = 0; i < 5; i++) assert.ok((await c.add(video())).ok);
+    c.close();
+  });
+});

@@ -13,6 +13,7 @@ import { Metrics } from "./metrics.ts";
 import { castLog } from "./playback/lounge.ts";
 import { publicRoutes } from "./http/publicRoutes.ts";
 import { staticClient } from "./http/staticClient.ts";
+import { noStore, securityHeaders } from "./http/security.ts";
 import { registerSocketHandlers, type SocketData } from "./sockets/index.ts";
 
 // Capture console output into the log files before anything else logs.
@@ -22,10 +23,12 @@ logger.captureConsole();
 const PORT = Number(process.env.PORT ?? 3001);
 const app = express();
 app.set("trust proxy", true);
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(securityHeaders);
+app.use(express.json({ limit: "20kb" }));
 
 const http = createServer(app);
-const io = new Server<ClientToServer, ServerToClient, {}, SocketData>(http, { cors: { origin: true } });
+const io = new Server<ClientToServer, ServerToClient, {}, SocketData>(http, { cors: { origin: true }, maxHttpBufferSize: 16_000 });
 const playLog = new FilePlayLog(dataDir());
 console.log(`data folder: ${dataDir()} (play log, logs, settings, admin login)`);
 const rooms = new RoomRegistry(io, playLog);
@@ -47,7 +50,7 @@ metrics.start();
 // ---------- HTTP API ----------
 startShareHostWatch();
 publicRoutes(app, { rooms, playLog });
-app.use("/api/admin", adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));
+app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));
 staticClient(app); // keep last: the /api 404 catch-all and the built client
 
 // ---------- Realtime ----------
