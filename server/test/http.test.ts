@@ -53,6 +53,41 @@ describe("HTTP headers", () => {
   });
 });
 
+describe("Content-Security-Policy (report-only)", () => {
+  it("is sent in report-only mode and names the YouTube origins and this host", async () => {
+    const res = await fetch(`${server.url}/api/info`);
+    assert.equal(res.headers.get("content-security-policy"), null, "not enforcing yet");
+    const csp = res.headers.get("content-security-policy-report-only") ?? "";
+    const host = new URL(server.url).host;
+    for (const part of [
+      "script-src 'self' https://www.youtube.com",
+      "frame-src https://www.youtube.com",
+      "img-src 'self' data: https://i.ytimg.com",
+      `ws://${host}`, // older Safari does not count ws:// as 'self'
+      "*.nip.io:*", // a host without a port only matches the default port
+      "*.sslip.io:*",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+      "report-uri /api/csp-report",
+    ])
+      assert.ok(csp.includes(part), `policy should contain: ${part}\n${csp}`);
+  });
+
+  it("accepts reports quietly, whatever their shape", async () => {
+    const post = (body: string, type = "application/csp-report") => fetch(`${server.url}/api/csp-report`, { method: "POST", headers: { "content-type": type }, body });
+    const classic = await post(JSON.stringify({ "csp-report": { "violated-directive": "img-src", "blocked-uri": "https://x.example/a.png", "document-uri": "http://localhost/r/ABCD?q=1" } }));
+    assert.equal(classic.status, 204);
+    const modern = await post(JSON.stringify([{ type: "csp-violation", body: { effectiveDirective: "script-src", blockedURL: "https://y.example/b.js" } }]), "application/reports+json");
+    assert.equal(modern.status, 204);
+    const empty = await post("{}");
+    assert.equal(empty.status, 204);
+    const huge = await post(JSON.stringify({ pad: "x".repeat(20_000) }));
+    assert.ok([204, 413].includes(huge.status));
+    // the server is still fine afterwards
+    assert.equal((await fetch(`${server.url}/api/info`)).status, 200);
+  });
+});
+
 describe("socket limits", () => {
   it("answers a flood with 'slow down' instead of working through it", async () => {
     const { code } = await createRoom(server.url);
