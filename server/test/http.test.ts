@@ -47,6 +47,20 @@ describe("HTTP headers", () => {
     assert.equal(deep.headers.get("cache-control"), "no-cache");
   });
 
+  it("gzips the client bundle when the browser accepts it, and leaves tiny responses alone", { skip: !existsSync(path.join(dist, "index.html")) }, async () => {
+    const html = await (await fetch(`${server.url}/`)).text();
+    const asset = /\/assets\/[\w.-]+\.js/.exec(html)?.[0];
+    assert.ok(asset);
+    const gz = await fetch(`${server.url}${asset}`, { headers: { "accept-encoding": "gzip" } });
+    assert.equal(gz.headers.get("content-encoding"), "gzip");
+    assert.match(gz.headers.get("vary") ?? "", /accept-encoding/i);
+    const plain = await fetch(`${server.url}${asset}`, { headers: { "accept-encoding": "identity" } });
+    assert.equal(plain.headers.get("content-encoding"), null);
+    assert.equal((await gz.text()).length, (await plain.text()).length, "same content either way");
+    const tiny = await fetch(`${server.url}/api/rooms/NOPE`, { headers: { "accept-encoding": "gzip" } });
+    assert.equal(tiny.headers.get("content-encoding"), null);
+  });
+
   it("rejects an oversized JSON body", async () => {
     const res = await fetch(`${server.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ by: "x".repeat(30_000) }) });
     assert.equal(res.status, 413);

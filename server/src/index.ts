@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import compression from "compression";
 import express from "express";
 import { Server } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
@@ -25,6 +26,7 @@ const PORT = Number(process.env.PORT ?? 3001);
 const app = express();
 app.set("trust proxy", true);
 app.disable("x-powered-by");
+app.use(compression()); // gzip text responses over 1kB (the client bundle: 341kB -> ~108kB)
 app.use(securityHeaders);
 app.use(cspHeader);
 app.use(express.json({ limit: "20kb" }));
