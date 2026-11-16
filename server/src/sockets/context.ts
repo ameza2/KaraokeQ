@@ -25,6 +25,8 @@ export interface SocketContext {
   room(): Room | undefined;
   /** The singer on this socket (undefined for a bare screen connection). */
   singerId(): string | undefined;
+  /** Leave the room this socket joined (before joining another one). */
+  leave(): void;
   /** The room, only if this singer is host or the screen (hasHostPowers). */
   hostRoom(): Room | undefined;
   /** The room, only if this singer may use playback/queue controls (canControl). */
@@ -40,6 +42,17 @@ export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry): S
     rooms,
     room,
     singerId,
+    leave: () => {
+      const r = room();
+      if (!r) return;
+      const me = singerId();
+      r.disconnect(socket.id);
+      socket.leave(r.channel);
+      socket.leave(`screen:${r.code}`);
+      if (me) socket.leave(r.singerChannel(me));
+      socket.data = {};
+      r.broadcast();
+    },
     hostRoom: () => {
       const r = room();
       return r?.hasHostPowers(singerId()) ? r : undefined;

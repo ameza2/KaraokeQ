@@ -32,6 +32,8 @@ export class Room {
   /** Device id of the active screen (see hasHostPowers). */
   screenSinger: string | null = null;
 
+  /** Most people one room accepts (a person's devices count once). */
+  static readonly MAX_SINGERS = 100;
   /** How long the host must be fully disconnected before anyone may claim host. */
   static readonly HOST_AWAY_MS = Number(process.env.KARAOKE_HOST_AWAY_MS) || 5 * 60_000;
   private hostAwaySince: number | null = null;

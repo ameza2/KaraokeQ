@@ -1,7 +1,8 @@
+import { Room } from "../rooms/index.ts";
 import type { SocketContext } from "./context.ts";
 
 /** Joining a room, renaming, leaving. */
-export function roomHandlers({ socket, rooms, room }: SocketContext) {
+export function roomHandlers({ socket, rooms, room, leave }: SocketContext) {
   socket.on("room:join", ({ code, singerId, name, hostToken, asScreen }, ack) => {
     const r = rooms.get(code);
     if (!r) return ack({ ok: false, error: "That room doesn't exist (or has expired)." });
@@ -9,6 +10,9 @@ export function roomHandlers({ socket, rooms, room }: SocketContext) {
     if (!cleanName || !singerId) return ack({ ok: false, error: "Enter a name to join." });
 
     const id = String(singerId).slice(0, 64);
+    if (!r.singers.has(id) && r.singers.size >= Room.MAX_SINGERS) return ack({ ok: false, error: "This room is full." });
+    // one room per socket: leaving the old one keeps it from showing this person online forever
+    if (socket.data.code && socket.data.code !== r.code) leave();
     // Host = whoever proves it with the current token, or the first person into a room
     // that has no host yet. A screen device never takes the host spot (it gets host powers instead).
     const screen = !!asScreen;

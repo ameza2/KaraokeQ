@@ -2,7 +2,7 @@ import { browserLabel } from "./browser.ts";
 import type { SocketContext } from "./context.ts";
 
 /** The screen page: joining as the room's output, progress and player events. */
-export function screenHandlers({ socket, rooms, room }: SocketContext) {
+export function screenHandlers({ socket, rooms, room, leave }: SocketContext) {
   socket.on("screen:progress", (p) => {
     if (socket.data.isScreen && room()?.mode === "screen") room()?.reportProgress(p);
   });
@@ -14,6 +14,10 @@ export function screenHandlers({ socket, rooms, room }: SocketContext) {
     // (the host pairs again to cast), and older screens are told and dropped.
     if (r.mode === "lounge") await r.useScreen("Another screen has taken over. Pair again to cast.");
     await r.dropUnembeddable(); // a room that cast: songs the web player can't play are removed
+    // The awaits above can take seconds. If the socket hung up meanwhile, stop here: adding it
+    // now would leave a screen that never disconnects (and a room that never expires).
+    if (!socket.connected) return;
+    if (socket.data.code && socket.data.code !== r.code) leave();
     r.replaceScreens(socket.id, "screen");
 
     const h = String(host ?? "");

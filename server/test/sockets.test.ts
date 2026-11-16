@@ -74,3 +74,35 @@ describe("malformed socket events", () => {
     assert.ok(await alive());
   });
 });
+
+describe("one room per socket", () => {
+  it("leaves the first room when the socket joins another", async () => {
+    const a = await createRoom(server.url);
+    const b = await createRoom(server.url);
+    const watcher = newClient("watcher");
+    await watcher.join(a.code);
+    const mover = newClient("mover");
+    await mover.join(a.code);
+    await watcher.waitState((s) => s.singers.some((x) => x.id === "mover" && x.online), "mover online in the first room");
+    await mover.join(b.code);
+    await watcher.waitState((s) => s.singers.some((x) => x.id === "mover" && !x.online), "mover offline in the first room");
+  });
+});
+
+describe("room size", () => {
+  it("refuses new people once a room has 100", async () => {
+    const { code } = await createRoom(server.url);
+    const pool = [newClient("pool-a"), newClient("pool-b")];
+    // a socket joining under a new id leaves its previous one, but the singer record stays, so ids pile up
+    for (let i = 0; i < 100; i++) {
+      const r = await pool[i % 2].socket.emitWithAck("room:join", { code, singerId: `p${i}`, name: `P${i}` });
+      assert.equal(r.ok, true, `person ${i + 1} joins`);
+    }
+    const extra = await pool[0].socket.emitWithAck("room:join", { code, singerId: "one-too-many", name: "Extra" });
+    assert.equal(extra.ok, false);
+    // someone already in the room can still come back
+    const back = await pool[1].socket.emitWithAck("room:join", { code, singerId: "p3", name: "P3" });
+    assert.equal(back.ok, true);
+    void until;
+  });
+});
