@@ -6,7 +6,7 @@ import RoomPage from "./features/room/RoomPage.tsx";
 import ScreenLanding from "./features/screen/ScreenLanding.tsx";
 import Admin from "./features/admin/AdminPage.tsx";
 import { adoptCarriedIdentity, moveOffIpAddress } from "./lib/hostRedirect.ts";
-import "./styles.css";
+import "./styles/index.css";
 
 adoptCarriedIdentity();
 // On a raw-IP address, hop to the hostname first (YouTube blocks many videos on IP pages).

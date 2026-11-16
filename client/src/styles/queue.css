@@ -1,0 +1,55 @@
+/* drag-to-reorder queue */
+.grip {
+  flex: none;
+  width: 2rem;
+  align-self: stretch;
+  margin: -0.55rem 0 -0.55rem -0.55rem; /* full row height = easy to grab */
+  padding-left: 0.55rem;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 1.15rem;
+  cursor: grab;
+  touch-action: none; /* dragging the grip must not scroll the page */
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  transition: color 0.2s;
+}
+.grip:hover,
+.grip:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+.queue .song {
+  transition: transform 0.18s ease;
+}
+.queue.dragging,
+.queue.dragging .grip {
+  cursor: grabbing;
+  user-select: none;
+}
+.queue .song.lifted {
+  transition: none;
+  position: relative;
+  z-index: 3;
+  background: var(--glass-strong);
+  border-color: rgb(var(--accent-rgb) / 0.35);
+  box-shadow: var(--shadow-lg);
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 1.2rem 0;
+}
+.history-pager {
+  margin: 0.2rem 0;
+  gap: 0.6rem;
+}
+.history-pager .icon-btn {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.history-pager .icon-btn:disabled {
+  opacity: 0.35;
+}
+

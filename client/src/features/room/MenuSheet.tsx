@@ -81,8 +81,8 @@ export function MenuSheet({
 
       {isHost && (
         <MenuSection title="Settings">
-            <ToggleItem icon="🎛️" title="Everyone can control" on={openControls} onToggle={onToggleOpenControls} hint={openControls ? "On: anyone can skip, go back, seek and reorder" : "Off: only you can skip others, go back, seek and reorder"} />
-            <ToggleItem icon="⚖️" title="Fair queue" on={fairQueue} onToggle={onToggleFairQueue} hint={fairQueue ? "On: singers with fewer songs queued go first" : "Off: songs play in the order they were added"} />
+          <ToggleItem icon="🎛️" title="Everyone can control" on={openControls} onToggle={onToggleOpenControls} hint={openControls ? "On: anyone can skip, go back, seek and reorder" : "Off: only you can skip others, go back, seek and reorder"} />
+          <ToggleItem icon="⚖️" title="Fair queue" on={fairQueue} onToggle={onToggleFairQueue} hint={fairQueue ? "On: singers with fewer songs queued go first" : "Off: songs play in the order they were added"} />
           <div className="menu-item menu-static" role="group" aria-label="Room colour">
             <span className="menu-icon">🎨</span>
             <span className="menu-text">
