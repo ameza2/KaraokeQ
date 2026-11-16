@@ -191,13 +191,26 @@ export class Room {
     output.on("ended", (itemId: string) => {
       if (this.nowPlaying?.id === itemId) this.advance();
     });
-    output.on("error", (itemId: string, errorCode?: number, screen?: ScreenInfo) => {
+    output.on("error", (itemId: string, errorCode?: number, screen?: ScreenInfo, played?: boolean) => {
       const item = this.nowPlaying;
       if (!item || item.id !== itemId) return;
-      const embedBlocked = errorCode === 101 || errorCode === 150;
+      const codeBlocked = errorCode === 101 || errorCode === 150;
+      // An embed block fails at load. 101/150 after the video was already playing means YouTube
+      // stopped it mid-way, most often because the signed-in account's plan hit its device limit
+      // (e.g. the same Premium account is also casting to the TV). That says nothing about the video.
+      const interrupted = codeBlocked && !!played && !!screen;
+      const embedBlocked = codeBlocked && !interrupted;
       console.warn(
-        `[${this.code}] screen error ${errorCode} on ${item.videoId} "${item.title}" — screen ${screen?.host ?? "?"} (${screen?.browser ?? "?"})${screen?.ipAddress ? " [raw IP]" : ""}`,
+        `[${this.code}] screen error ${errorCode} on ${item.videoId} "${item.title}" — screen ${screen?.host ?? "?"} (${screen?.browser ?? "?"})${screen?.ipAddress ? " [raw IP]" : ""}${interrupted ? " [after it started playing]" : ""}`,
       );
+      if (interrupted && screen) {
+        this.freezeProgress();
+        this.io.to(screen.socketId).emit("screen:blocked", { itemId, shareHost: null, reason: "limit" });
+        this.say(`holding "${item.title}": YouTube stopped it while playing (likely the account's device limit)`);
+        const msg = `YouTube stopped "${item.title}" while it was playing. If the screen is signed in to the same Google account as the YouTube cast, the plan's device limit may be reached: use the screen signed out or in Incognito, or skip the song.`;
+        for (const id of new Set([item.singerId, this.hostId].filter((x): x is string => !!x))) this.notify(id, { level: "error", message: msg });
+        return;
+      }
       // YouTube can deny a video on one device/address and allow it on another.
       // If it's this screen's problem (raw-IP address, or the song already played on
       // another screen), keep the song and its position instead of skipping it.

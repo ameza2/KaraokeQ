@@ -100,7 +100,8 @@ export default function ScreenPlayer({
   const [blocked, setBlocked] = useState(false); // browser refused to autoplay
   const [full, setFull] = useState(autoFull);
   // YouTube blocks the current video at this page's raw-IP address (it plays fine by hostname)
-  const [ipBlocked, setIpBlocked] = useState<{ itemId: string; shareHost: string | null; reason: "ip" | "device" } | null>(null);
+  const [ipBlocked, setIpBlocked] = useState<{ itemId: string; shareHost: string | null; reason: "ip" | "device" | "limit" } | null>(null);
+  const playedRef = useRef<string | null>(null); // the item that reached the playing state (an error after that isn't an embed block)
   const [reopenFailed, setReopenFailed] = useState(false); // embedded player shown full screen
   const rootEl = useRef<HTMLDivElement>(null);
   const target = useRef<{ itemId: string; startAt: number } | null>(null); // where playback should begin
@@ -125,6 +126,7 @@ export default function ScreenPlayer({
         if (currentRef.current?.id === cmd.item.id) return;
         setIpBlocked(null);
         currentRef.current = cmd.item;
+        playedRef.current = null;
         setCurrent(cmd.item);
         const startSeconds = Math.max(0, Math.floor(cmd.startAt ?? 0));
         // Only announce the singer at the start of a song, not when resuming mid-song.
@@ -261,6 +263,7 @@ export default function ScreenPlayer({
           onStateChange: (e: { data: number }) => {
             const item = currentRef.current;
             if (e.data === 1) {
+              if (item) playedRef.current = item.id;
               setBlocked(false);
               // Some players ignore startSeconds: jump to where the room actually is.
               const t = target.current;
@@ -274,7 +277,7 @@ export default function ScreenPlayer({
           },
           onError: (e: { data: number }) => {
             const item = currentRef.current;
-            if (item) socket.current?.emit("screen:event", { type: "error", itemId: item.id, errorCode: e.data });
+            if (item) socket.current?.emit("screen:event", { type: "error", itemId: item.id, errorCode: e.data, played: playedRef.current === item.id });
           },
         },
       });
@@ -544,7 +547,14 @@ export default function ScreenPlayer({
 
       {ipBlocked && (
         <div className="start-overlay ip-blocked" role="alert">
-          {ipBlocked.reason === "device" ? (
+          {ipBlocked.reason === "limit" ? (
+            <>
+              <div className="start-title">YouTube stopped this video while it was playing</div>
+              <div className="muted">
+                This usually means the Google account this screen is signed in to has reached its plan's device limit, for example when the same account is also casting to the TV. Try this screen signed out or in Incognito, or skip the song.
+              </div>
+            </>
+          ) : ipBlocked.reason === "device" ? (
             <>
               <div className="start-title">YouTube won't play this video on this device</div>
               <div className="muted">

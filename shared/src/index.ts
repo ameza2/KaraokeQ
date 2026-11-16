@@ -102,6 +102,8 @@ export interface ScreenEvent {
   type: "ended" | "error" | "playing" | "paused" | "skip-blocked";
   itemId: string;
   errorCode?: number;
+  /** For "error": the video had reached the playing state before it failed (so it wasn't blocked at load). */
+  played?: boolean;
 }
 
 export interface Notice {
@@ -146,7 +148,7 @@ export interface ServerToClient {
   /** Sent to a screen right before it's disconnected because another screen joined or a YouTube cast was paired. */
   "screen:replaced": (by: "screen" | "cast") => void;
   /** This screen's address (a raw IP) is blocked for the current video; others may play it. */
-  "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" }) => void;
+  "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" | "limit" }) => void;
   /** Sent to a singer who was just made host: their proof for future reconnects. */
   "host:token": (p: { hostToken: string }) => void;
   /** The room was deleted (by the admin). The socket is disconnected right after. */
