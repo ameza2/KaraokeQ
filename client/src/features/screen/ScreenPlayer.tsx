@@ -18,6 +18,7 @@ interface YTPlayer {
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   getDuration(): number;
+  destroy(): void;
 }
 declare global {
   interface Window {
@@ -284,6 +285,13 @@ export default function ScreenPlayer({
     });
     return () => {
       cancelled = true;
+      ready.current = false;
+      try {
+        player.current?.destroy(); // removes the iframe and the API's listeners
+      } catch {
+        /* already gone */
+      }
+      player.current = null;
     };
   }, []); // created right away (hidden) so the first click can start playback itself
 
