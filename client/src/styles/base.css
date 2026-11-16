@@ -57,7 +57,11 @@
   --on-accent: #22160f;
   --accent-ring: rgb(var(--accent-rgb) / 0.28);
   --danger: #f08a8a;
+  --danger-rgb: 240 138 138;
   --danger-bg: rgb(120 40 45 / 0.6);
+  --on-danger: #ffe1dc;
+  --ok: #6ed696; /* online / healthy status (the same in every colour preset) */
+  --ok-rgb: 110 214 150;
   --warn-bg: rgb(120 72 30 / 0.4);
   --track: rgb(var(--rim-rgb) / 0.14);
 

@@ -204,7 +204,7 @@
 }
 .toast.error {
   background: var(--danger-bg);
-  color: #ffe1dc;
+  color: var(--on-danger);
 }
 
 @keyframes rise {

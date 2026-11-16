@@ -26,8 +26,8 @@
 }
 .btn.danger {
   background: var(--danger-bg);
-  border-color: rgb(240 138 138 / 0.35);
-  color: #ffe1dc;
+  border-color: rgb(var(--danger-rgb) / 0.35);
+  color: var(--on-danger);
 }
 .admin-tabs button {
   flex: 1;
@@ -173,8 +173,8 @@
   flex: none;
 }
 .dot.on {
-  background: #6ed696;
-  box-shadow: 0 0 0 3px rgb(110 214 150 / 0.18);
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgb(var(--ok-rgb) / 0.18);
 }
 .admin-actions {
   display: flex;
