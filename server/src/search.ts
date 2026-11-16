@@ -66,10 +66,21 @@ export async function searchVideos(rawQuery: string, rawLimit: number, playableO
     e.lock = (async () => {
       const query = /karaoke/i.test(q) ? q : `${q} karaoke`;
       try {
-        const feed = await (await yt()).search(query, { type: "video" });
-        e.videos.push(...(await toResults(feed, e)));
+        const attempt = async () => {
+          const feed = await (await yt()).search(query, { type: "video" });
+          return { feed, videos: await toResults(feed, e) };
+        };
+        let { feed, videos } = await attempt();
+        if (videos.length === 0) {
+          // A stale YouTube session answers with an empty page instead of an error.
+          console.warn(`search "${q}": no videos came back, retrying with a fresh YouTube session`);
+          ytPromise = null;
+          ({ feed, videos } = await attempt());
+        }
+        e.videos.push(...videos);
         e.feed = feed.has_continuation ? feed : null;
         e.pages = 1;
+        if (e.videos.length === 0) cache.delete(key); // never cache an empty page for 24h
       } catch (err) {
         ytPromise = null; // force a fresh session next time
         cache.delete(key);
