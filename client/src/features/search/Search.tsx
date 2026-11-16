@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 import { MODE_LABELS, PAGE_SIZES, type OutputMode, type SearchPage, type VideoResult } from "@karaoke/shared";
 import { load, save } from "../../lib/storage.ts";
 
@@ -9,7 +9,7 @@ function initialPageSize(): number {
   return (PAGE_SIZES as readonly number[]).includes(n) ? n : 25;
 }
 
-export default function Search({
+function Search({
   code,
   mode,
   onAdd,
@@ -273,3 +273,6 @@ export default function Search({
     </section>
   );
 }
+
+// Memoised: the room page re-renders about once a second with the playback position.
+export default memo(Search);

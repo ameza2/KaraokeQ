@@ -1,10 +1,11 @@
-import { StrictMode } from "react";
+import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Home from "./features/home/Home.tsx";
 import RoomPage from "./features/room/RoomPage.tsx";
 import ScreenLanding from "./features/screen/ScreenLanding.tsx";
-import Admin from "./features/admin/AdminPage.tsx";
+// Only the admin needs these (and the performance charts), so phones never download them.
+const Admin = lazy(() => import("./features/admin/AdminPage.tsx"));
 import { adoptCarriedIdentity, moveOffIpAddress } from "./lib/hostRedirect.ts";
 import "./styles/index.css";
 
@@ -20,7 +21,7 @@ void moveOffIpAddress().then((moving) => {
           <Route path="/screen" element={<ScreenLanding />} />
           <Route path="/r/:code" element={<RoomPage />} />
           <Route path="/r/:code/screen" element={<RoomPage screenMode />} />
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin" element={<Suspense fallback={<main className="home muted">Loading…</main>}><Admin /></Suspense>} />
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>

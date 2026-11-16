@@ -4,6 +4,7 @@ import { qrSrc, useJoinUrl } from "../../lib/joinUrl.ts";
 import { connect, type KSocket } from "../../lib/socket.ts";
 import Scrubber from "../../components/Scrubber.tsx";
 import { moveOffIpAddress } from "../../lib/hostRedirect.ts";
+import { takenOverText, type ReplacedBy } from "./takeover.ts";
 
 // Minimal typings for the YouTube IFrame Player API.
 interface YTPlayer {
@@ -660,13 +661,6 @@ function FullControls({
       </div>
     </div>
   );
-}
-
-/** What replaced this screen: another screen, or the YouTube cast. */
-export type ReplacedBy = "screen" | "cast";
-
-export function takenOverText(by: ReplacedBy) {
-  return by === "cast" ? "YouTube cast has taken over." : "Another screen has taken over.";
 }
 
 /** Screen seek bar: auto-hides while playing; ←/→ (remotes) jump 10 seconds. */

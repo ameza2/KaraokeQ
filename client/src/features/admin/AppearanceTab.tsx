@@ -1,6 +1,5 @@
 import { THEMES, THEME_LABELS, type ThemeName } from "@karaoke/shared";
 import { api, type Run } from "../../lib/adminApi.ts";
-import Admin from "./AdminPage.tsx";
 
 export function AppearanceTab({ run, theme, onChange }: { run: Run; theme: ThemeName; onChange: (t: ThemeName) => void }) {
   return (

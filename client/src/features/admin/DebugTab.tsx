@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type AdminStats, type LogLine } from "@karaoke/shared";
 import { api, type Run } from "../../lib/adminApi.ts";
 import PerfCharts from "./PerfCharts.tsx";
-import Room from "../room/RoomPage.tsx";
 import { usePolling } from "./usePolling.ts";
 import { duration, mb, clock, dateTime } from "./format.ts";
 

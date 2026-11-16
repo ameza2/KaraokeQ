@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { type AdminRoomReport } from "@karaoke/shared";
 import { api, type Run } from "../../lib/adminApi.ts";
-import Room from "../room/RoomPage.tsx";
 import { usePolling } from "./usePolling.ts";
-import { duration, clock } from "./format.ts";
+import { duration } from "./format.ts";
 import { RoomDetail } from "./RoomDetail.tsx";
 import { Dialog } from "../../components/ui/Dialog.tsx";
 

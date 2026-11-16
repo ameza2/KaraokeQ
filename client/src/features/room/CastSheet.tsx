@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { type RoomState } from "@karaoke/shared";
 import { Sheet } from "../../components/ui/Sheet.tsx";
 

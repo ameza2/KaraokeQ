@@ -1,5 +1,4 @@
 import { THEMES, THEME_LABELS, type RoomState, type ThemeName } from "@karaoke/shared";
-import Room from "./RoomPage.tsx";
 import { type SheetName } from "./RoomView.tsx";
 import { Sheet } from "../../components/ui/Sheet.tsx";
 import { ToggleItem } from "../../components/ui/ToggleItem.tsx";

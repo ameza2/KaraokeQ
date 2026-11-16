@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { type AdminSession } from "@karaoke/shared";
 import { api } from "../../lib/adminApi.ts";
-import Admin from "./AdminPage.tsx";
 
 export function SignIn({ onDone }: { onDone: (s: AdminSession) => void }) {
   const [username, setUsername] = useState("Administrator");
