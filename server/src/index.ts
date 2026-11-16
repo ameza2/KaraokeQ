@@ -279,6 +279,7 @@ io.on("connection", (socket) => {
     // One output per room: the newest one wins. A screen joining stops the YouTube cast
     // (the host pairs again to cast), and older screens are told and dropped.
     if (r.mode === "lounge") await r.useScreen("Another screen has taken over. Pair again to cast.");
+    await r.dropUnembeddable(); // a room that cast: songs the web player can't play are removed
     r.replaceScreens(socket.id, "screen");
 
     const h = String(host ?? "");

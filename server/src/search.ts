@@ -120,7 +120,7 @@ export async function suggest(q: string): Promise<string[]> {
 
 const embedCache = new Map<string, boolean>();
 
-async function isEmbeddable(videoId: string): Promise<boolean> {
+export async function isEmbeddable(videoId: string): Promise<boolean> {
   const known = embedCache.get(videoId);
   if (known !== undefined) return known;
   try {

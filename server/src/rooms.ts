@@ -4,7 +4,7 @@ import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, RoomSetti
 import type { PlaybackOutput } from "./playback/output.ts";
 import { ScreenOutput } from "./playback/screen.ts";
 import { LoungeOutput, pairCast } from "./playback/lounge.ts";
-import { markNotEmbeddable, unmarkNotEmbeddable, videoInfo } from "./search.ts";
+import { isEmbeddable, markNotEmbeddable, unmarkNotEmbeddable, videoInfo } from "./search.ts";
 import { getShareHost } from "./net.ts";
 import type { ScreenInfo } from "./playback/screen.ts";
 import { toPlayRecord, type PlayLog } from "./playLog.ts";
@@ -211,6 +211,7 @@ export class Room {
       if (embedBlocked && screen && (screen.ipAddress || playedElsewhere || streak)) {
         this.freezeProgress();
         const reason = screen.ipAddress ? "ip" : "device";
+        this.say(`holding "${item.title}": ${screen.ipAddress ? "screen is on a raw address" : playedElsewhere ? "it already played on a screen in this room" : "two songs in a row were blocked on this screen"}`);
         const shareHost = getShareHost();
         this.io.to(screen.socketId).emit("screen:blocked", { itemId, shareHost, reason });
         const msg =
@@ -226,7 +227,7 @@ export class Room {
       this.notify(item.singerId, {
         level: "error",
         message: embedBlocked
-          ? `"${item.title}" can't be played on the screen (the uploader blocked embedding). Try another version.`
+          ? `"${item.title}" only plays on YouTube, so the web player skipped it. Try another version.`
           : `"${item.title}" failed to play and was skipped.`,
       });
       this.advance();
@@ -415,6 +416,7 @@ export class Room {
   }
 
   private start(next: QueueItem | null) {
+    this.firstReport = null;
     this.nowPlaying = next;
     this.paused = false;
     this.progress = null;
@@ -441,11 +443,16 @@ export class Room {
    */
   private progressAt: number | null = null;
 
+  private firstReport: { itemId: string; time: number } | null = null;
+
   reportProgress(p: Progress) {
     if (!this.nowPlaying || p.itemId !== this.nowPlaying.id) return;
     const time = Number(p.time), duration = Number(p.duration);
     if (!isFinite(time) || !isFinite(duration)) return;
-    if (time > 1) {
+    // A position alone proves nothing: a screen resuming a song reports the resume point
+    // even if the video never starts. Playback is real once the position has moved on.
+    const first = this.firstReport?.itemId === p.itemId ? this.firstReport : (this.firstReport = { itemId: p.itemId, time });
+    if (time - first.time >= 2) {
       this.playedOk.add(this.nowPlaying.videoId); // it really played on some screen
       this.lastBlock = null; // a screen is playing fine
     }
@@ -505,6 +512,8 @@ export class Room {
   // ---------- YouTube cast (Lounge protocol) ----------
 
   private pairing = false;
+  /** Songs may have been queued that only play on YouTube: check them when a screen takes over. */
+  private needsEmbedCheck = false;
 
   /**
    * Pair the YouTube cast and move playback there, from the current position.
@@ -528,6 +537,7 @@ export class Room {
       const rival = castOwners.get(target.screenId);
       if (rival && rival !== this) await rival.useScreen("The YouTube cast moved to another room. Pair again or open a screen.", { leaveTv: true });
       castOwners.set(target.screenId, this);
+      this.needsEmbedCheck = true;
       this.replaceScreens(null, "cast");
       this.freezeProgress();
       const startAt = this.currentTime();
@@ -652,6 +662,37 @@ export class Room {
     await old?.dispose();
   }
 
+  /**
+   * The web player can only play videos the uploader allows to be embedded, but the
+   * YouTube cast plays anything. When a screen takes over after casting, take the songs
+   * it can't play out of the queue (and off the stage), and tell their singers.
+   * Does nothing unless the room has cast since the last check.
+   */
+  async dropUnembeddable() {
+    if (!this.needsEmbedCheck || this.mode !== "screen") return;
+    this.needsEmbedCheck = false;
+    const items = [this.nowPlaying, ...this.queue].filter((x): x is QueueItem => !!x && !x.external);
+    const flags = await Promise.all(items.map((x) => isEmbeddable(x.videoId)));
+    const blocked = new Set(items.filter((_, i) => !flags[i]).map((x) => x.id));
+    if (blocked.size === 0) return;
+    const dropped = items.filter((x) => blocked.has(x.id));
+    this.queue = this.queue.filter((x) => !blocked.has(x.id));
+    const lostStage = !!this.nowPlaying && blocked.has(this.nowPlaying.id);
+    for (const x of dropped) this.say(`dropped "${x.title}" (${x.videoId}): only plays on YouTube`);
+    const bySinger = new Map<string, QueueItem[]>();
+    for (const x of dropped) bySinger.set(x.singerId, [...(bySinger.get(x.singerId) ?? []), x]);
+    for (const [singerId, list] of bySinger)
+      this.notify(singerId, {
+        level: "error",
+        message: list.length === 1 ? `"${list[0].title}" only plays on YouTube, so it was removed.` : `${list.length} of your songs only play on YouTube, so they were removed.`,
+      });
+    if (lostStage) {
+      // dropped, not played: it isn't logged or added to the history
+      this.nowPlaying = null;
+      this.start(this.queue.shift() ?? null);
+    } else this.broadcast();
+  }
+
   /** Stop casting and carry on from the same spot on the browser screen. */
   async useScreen(message?: string, opts: { leaveTv?: boolean } = {}) {
     if (!this.lounge) return;
@@ -667,7 +708,10 @@ export class Room {
     await this.dropLounge();
     this.mode = "screen";
     this.say(message ? `YouTube cast unpaired: ${message}` : "YouTube cast unpaired");
-    if (this.nowPlaying) void this.screenOutput.play(this.nowPlaying, { startAt, paused: this.paused });
+    const onStage = this.nowPlaying;
+    if (!opts.leaveTv) await this.dropUnembeddable();
+    // (if the song on stage was dropped, the next one has already started from the top)
+    if (this.nowPlaying && this.nowPlaying === onStage) void this.screenOutput.play(this.nowPlaying, { startAt, paused: this.paused });
     if (message && this.hostId) this.notify(this.hostId, { level: "error", message });
     this.broadcast();
   }
