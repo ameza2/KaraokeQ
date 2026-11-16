@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { Server } from "socket.io";
 import type { ClientToServer, QueueItem, ScreenCommand, ScreenEvent, ServerToClient } from "@karaoke/shared";
-import type { PlaybackOutput } from "./output.ts";
+import type { PlayOptions, PlaybackOutput } from "./output.ts";
 
 /**
  * Plays the queue on the browser that has /r/:code/screen open, using the
@@ -40,8 +40,8 @@ export class ScreenOutput extends EventEmitter implements PlaybackOutput {
     else if (e.type === "skip-blocked") this.emit("skip-blocked", e.itemId);
   }
 
-  async play(item: QueueItem) {
-    this.send({ action: "play", item });
+  async play(item: QueueItem, opts: PlayOptions = {}) {
+    this.send({ action: "play", item, ...opts });
   }
   async pause() {
     this.send({ action: "pause" });

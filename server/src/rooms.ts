@@ -3,7 +3,8 @@ import type { Server } from "socket.io";
 import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, RoomSettings, ScreenCommand, RoomState, ServerToClient, VideoResult } from "@karaoke/shared";
 import type { PlaybackOutput } from "./playback/output.ts";
 import { ScreenOutput } from "./playback/screen.ts";
-import { markNotEmbeddable, unmarkNotEmbeddable } from "./search.ts";
+import { LoungeOutput, pairTv } from "./playback/lounge.ts";
+import { markNotEmbeddable, unmarkNotEmbeddable, videoInfo } from "./search.ts";
 import { getShareHost } from "./net.ts";
 import type { ScreenInfo } from "./playback/screen.ts";
 import { toPlayRecord, type PlayLog } from "./playLog.ts";
@@ -77,7 +78,21 @@ export class Room {
   singers = new Map<string, SingerRecord>();
   screens = new Set<string>();
   lastActive = Date.now();
-  output: PlaybackOutput;
+  /** The browser screen output; always present, so a TV that drops falls back to it. */
+  readonly screenOutput: ScreenOutput;
+  /** The paired TV (YouTube app), when there is one. */
+  lounge: LoungeOutput | null = null;
+
+  /** What the room drives right now: the TV while casting, else the browser screen. */
+  get output(): PlaybackOutput {
+    return this.mode === "lounge" && this.lounge ? this.lounge : this.screenOutput;
+  }
+
+  /** Something is actually playing the videos (a connected screen, or the TV's app). */
+  private playbackLive() {
+    // A TV keeps playing when our link to it drops, so its clock keeps running too.
+    return this.mode === "lounge" ? !!this.lounge : this.screens.size > 0;
+  }
 
   /** Unique per room instance (codes get reused after a room expires). */
   readonly id = randomUUID();
@@ -88,7 +103,7 @@ export class Room {
     readonly code: string,
     private log: PlayLog,
   ) {
-    this.output = this.attach(new ScreenOutput(io, code));
+    this.screenOutput = this.attach(new ScreenOutput(io, code));
     log.openRoom({ roomId: this.id, roomCode: code, createdAt: this.createdAt });
     this.say("room created");
   }
@@ -133,7 +148,7 @@ export class Room {
     return `singer:${this.code}:${singerId}`;
   }
 
-  private attach(output: PlaybackOutput) {
+  private attach<T extends PlaybackOutput>(output: T): T {
     output.on("ended", (itemId: string) => {
       if (this.nowPlaying?.id === itemId) this.advance();
     });
@@ -206,6 +221,7 @@ export class Room {
       hostId: this.hostId,
       screenId: this.screens.size > 0 ? this.screenSinger : null,
       settings: this.settings,
+      tv: this.lounge ? { name: this.lounge.name, connected: this.lounge.connected } : null,
     };
   }
 
@@ -232,7 +248,7 @@ export class Room {
   disconnect(socketId: string) {
     // Screen gone: nothing is playing any more, so stop the clock where it was.
     if (this.screens.delete(socketId) && this.screens.size === 0) {
-      this.freezeProgress();
+      if (this.mode === "screen") this.freezeProgress();
       this.screenSinger = null;
     }
     for (const s of this.singers.values()) s.sockets.delete(socketId);
@@ -323,14 +339,14 @@ export class Room {
     const prev = this.previous;
     if (!prev) return false;
     this.previous = null;
-    if (this.nowPlaying) this.queue.unshift(this.nowPlaying);
+    if (this.nowPlaying && !this.nowPlaying.external) this.queue.unshift(this.nowPlaying);
     this.history = this.history.filter((h) => h.id !== prev.id);
     this.start(prev);
     return true;
   }
 
   advance() {
-    if (this.nowPlaying) {
+    if (this.nowPlaying && !this.nowPlaying.external) {
       const playedAt = Date.now();
       this.log.record(toPlayRecord(this.id, this.code, this.nowPlaying, playedAt)); // every song, forever
       this.playCount++;
@@ -377,7 +393,7 @@ export class Room {
       this.lastBlock = null; // a screen is playing fine
     }
     this.progress = { itemId: p.itemId, time, duration };
-    this.progressAt = this.paused || this.screens.size === 0 ? null : Date.now();
+    this.progressAt = this.paused || !this.playbackLive() ? null : Date.now();
     this.io.to(this.channel).emit("playback:progress", this.progress);
   }
 
@@ -420,15 +436,181 @@ export class Room {
   }
 
   resume() {
+    // Nothing on stage but songs waiting (the TV went back to its home screen): start the queue.
+    if (!this.nowPlaying && this.queue.length) return this.advance();
     if (!this.nowPlaying || !this.paused) return;
     this.paused = false;
-    if (this.progress && this.screens.size > 0) this.progressAt = Date.now();
+    if (this.progress && this.playbackLive()) this.progressAt = Date.now();
     void this.output.resume();
     this.broadcast();
   }
 
+  // ---------- TV casting (YouTube Lounge) ----------
+
+  private pairing = false;
+
+  /**
+   * Pair the TV's YouTube app and move playback there, from the current position.
+   * Returns an error message, or null on success.
+   */
+  async pairTv(rawCode: string): Promise<{ error: string } | { name: string }> {
+    if (this.pairing) return { error: "Already pairing, one moment." };
+    this.pairing = true;
+    try {
+      const lounge = new LoungeOutput(await pairTv(rawCode));
+      try {
+        await lounge.connect();
+      } catch (err) {
+        await lounge.dispose();
+        throw err;
+      }
+      await this.dropLounge();
+      this.freezeProgress();
+      const startAt = this.currentTime();
+      this.lounge = lounge;
+      this.wireLounge(lounge);
+      this.mode = "lounge";
+      void this.screenOutput.stop(); // the browser screen goes idle
+      if (this.nowPlaying) void lounge.play(this.nowPlaying, { startAt, paused: this.paused });
+      void lounge.syncNow(); // picks up a video the TV was already playing
+      this.say(`TV paired: "${lounge.name}", playing on the TV app`);
+      this.broadcast();
+      return { name: lounge.name };
+    } catch (err) {
+      this.say(`TV pairing failed: ${(err as Error).message}`);
+      return { error: (err as Error).message };
+    } finally {
+      this.pairing = false;
+    }
+  }
+
+  private wireLounge(lounge: LoungeOutput) {
+    lounge.on("ended", (itemId: string) => {
+      if (this.nowPlaying?.id === itemId) this.advance();
+    });
+    lounge.on("error", (itemId: string) => {
+      const item = this.nowPlaying;
+      if (!item || item.id !== itemId) return;
+      this.say(`TV didn't start "${item.title}" (${item.videoId}), skipping`);
+      this.notify(item.singerId, { level: "error", message: `"${item.title}" didn't start on the TV and was skipped.` });
+      this.advance();
+    });
+    // the TV reports an external video's position as "external": map it to the room's item
+    lounge.on("progress", (p: Progress) => this.reportProgress(p.itemId === "external" && this.nowPlaying?.external ? { ...p, itemId: this.nowPlaying.id } : p));
+    // someone used the TV remote: follow it instead of fighting it
+    lounge.on("remote-state", (s: "playing" | "paused") => this.syncPaused(s === "paused"));
+    // The TV started another video by itself: show it as the current video. Someone chose
+    // that on purpose, so the song it replaced is dropped; the queue carries on after it.
+    lounge.on("external", (videoId: string) => this.takeOver(videoId));
+    lounge.on("external-ended", () => {
+      if (this.nowPlaying?.external) this.advance();
+    });
+    lounge.on("external-idle", () => {
+      // back on the TV's home screen: nothing plays, the queue waits
+      if (!this.nowPlaying?.external) return;
+      this.say("TV left its own video; queue on hold");
+      this.clearStage();
+    });
+    // The TV left one of our songs. At the end that's just the end; earlier it was a
+    // deliberate change, so the song is dropped and the queue waits.
+    lounge.on("idle", (itemId: string) => {
+      const item = this.nowPlaying;
+      if (!item || item.id !== itemId) return;
+      const d = this.progress?.itemId === item.id ? this.progress.duration : 0;
+      if (d && this.currentTime() >= d - 8) return this.advance();
+      this.say(`TV left "${item.title}" before the end, dropped; queue on hold`);
+      this.clearStage();
+      this.notify(item.singerId, { level: "info", message: `"${item.title}" was stopped on the TV.` });
+      if (this.hostId && this.hostId !== item.singerId) this.notify(this.hostId, { level: "info", message: `"${item.title}" was stopped on the TV. The queue is on hold; press play to carry on.` });
+    });
+    lounge.on("link", (up: boolean) => {
+      // The TV keeps playing when our link drops, so the song and its clock carry on as they were.
+      this.say(`TV ${up ? "connected" : "disconnected"}`);
+      if (up) void lounge.syncNow();
+      this.broadcast();
+    });
+    lounge.on("lost", () => {
+      if (this.hostId) this.notify(this.hostId, { level: "error", message: "Lost contact with the TV. It keeps playing its current video; reconnecting…" });
+    });
+  }
+
+  /** Nothing on stage (the queue is untouched). */
+  private clearStage() {
+    this.nowPlaying = null;
+    this.paused = false;
+    this.progress = null;
+    this.progressAt = null;
+    this.broadcast();
+  }
+
+  private takeOver(videoId: string) {
+    if (this.nowPlaying?.videoId === videoId && this.nowPlaying.external) return;
+    const replaced = this.nowPlaying && !this.nowPlaying.external ? this.nowPlaying : null; // dropped: the change was deliberate
+    if (replaced) this.notify(replaced.singerId, { level: "info", message: `"${replaced.title}" was replaced by another video on the TV.` });
+    const item: QueueItem = {
+      id: randomUUID(),
+      videoId,
+      title: "Playing on the TV",
+      channel: "",
+      duration: "",
+      thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+      singerId: "",
+      singerName: "On the TV",
+      addedAt: Date.now(),
+      external: true,
+    };
+    this.nowPlaying = item;
+    this.paused = false;
+    this.progress = null;
+    this.progressAt = null;
+    this.say(`TV started its own video (${videoId})${replaced ? `, replacing "${replaced.title}" (dropped)` : ""}`);
+    this.broadcast();
+    void videoInfo(videoId).then((info) => {
+      if (!info || this.nowPlaying?.id !== item.id) return;
+      item.title = info.title || item.title;
+      item.channel = info.channel;
+      this.broadcast();
+    });
+  }
+
+  /** The TV's own remote paused/resumed: mirror it without sending a command back. */
+  private syncPaused(paused: boolean) {
+    if (!this.nowPlaying || this.paused === paused) return;
+    if (paused) this.freezeProgress();
+    this.paused = paused;
+    if (!paused && this.progress && this.playbackLive()) this.progressAt = Date.now();
+    this.broadcast();
+  }
+
+  private async dropLounge() {
+    const old = this.lounge;
+    this.lounge = null;
+    await old?.dispose();
+  }
+
+  /** Stop casting and carry on from the same spot on the browser screen. */
+  async useScreen(message?: string) {
+    if (!this.lounge) return;
+    this.freezeProgress();
+    const startAt = this.currentTime();
+    const lounge = this.lounge;
+    // a video the TV started itself can't be moved to the browser screen; leave it on the TV
+    if (this.nowPlaying?.external) {
+      this.nowPlaying = null;
+      this.progress = null;
+      this.progressAt = null;
+    } else void lounge.stop();
+    await this.dropLounge();
+    this.mode = "screen";
+    this.say(message ? `TV unpaired: ${message}` : "TV unpaired");
+    if (this.nowPlaying) void this.screenOutput.play(this.nowPlaying, { startAt, paused: this.paused });
+    if (message && this.hostId) this.notify(this.hostId, { level: "error", message });
+    this.broadcast();
+  }
+
   async dispose() {
-    await this.output.dispose();
+    await this.screenOutput.dispose();
+    await this.dropLounge();
   }
 }
 

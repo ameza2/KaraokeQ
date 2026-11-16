@@ -9,7 +9,6 @@ import type { ClientToServer, ServerToClient } from "@karaoke/shared";
 import { RoomRegistry } from "./rooms.ts";
 import { FilePlayLog, dataDir } from "./playLog.ts";
 import { getShareHost, lanIps, startShareHostWatch } from "./net.ts";
-import { ScreenOutput } from "./playback/screen.ts";
 import { knownNotEmbeddable, rateLimiter, searchVideos, suggest } from "./search.ts";
 import { Logger } from "./logger.ts";
 import { SiteSettings } from "./siteSettings.ts";
@@ -250,8 +249,19 @@ io.on("connection", (socket) => {
     if (r?.canControl(socket.data.singerId)) r.seek(Number(seconds));
   });
 
+  socket.on("tv:pair", async ({ code }, ack) => {
+    const r = room();
+    if (!r || !r.hasHostPowers(socket.data.singerId)) return ack({ ok: false, error: "Only the host can do that." });
+    const result = await r.pairTv(String(code ?? ""));
+    ack("error" in result ? { ok: false, error: result.error } : { ok: true, name: result.name });
+  });
+  socket.on("tv:unpair", () => {
+    const r = room();
+    if (r?.hasHostPowers(socket.data.singerId)) void r.useScreen();
+  });
+
   socket.on("screen:progress", (p) => {
-    if (socket.data.isScreen) room()?.reportProgress(p);
+    if (socket.data.isScreen && room()?.mode === "screen") room()?.reportProgress(p);
   });
 
   socket.on("screen:join", ({ code, deviceId, host }, ack) => {
@@ -278,13 +288,13 @@ io.on("connection", (socket) => {
     r.screenSinger = deviceId ? String(deviceId).slice(0, 64) : null;
     ack({ ok: true, state: r.state() });
     // Pick up exactly where playback was (timestamp + paused state).
-    if (r.output instanceof ScreenOutput) socket.emit("screen:command", r.resumeCommand());
+    if (r.mode === "screen") socket.emit("screen:command", r.resumeCommand());
     r.broadcast();
   });
 
   socket.on("screen:event", (e) => {
     const r = room();
-    if (r && socket.data.isScreen && r.output instanceof ScreenOutput) r.output.handleEvent(e, {
+    if (r && socket.data.isScreen && r.mode === "screen") r.screenOutput.handleEvent(e, {
         socketId: socket.id,
         ipAddress: !!socket.data.ipAddress,
         host: socket.data.host ?? "?",

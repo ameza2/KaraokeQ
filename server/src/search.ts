@@ -169,3 +169,15 @@ export function rateLimiter(limit: number, windowMs: number) {
     return ++h.count <= limit;
   };
 }
+
+/** Title and channel of any video (oEmbed, no API key), for videos started on the TV itself. */
+export async function videoInfo(videoId: string): Promise<{ title: string; channel: string } | null> {
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { title?: string; author_name?: string };
+    return { title: String(j.title ?? "").slice(0, 200), channel: String(j.author_name ?? "").slice(0, 100) };
+  } catch {
+    return null;
+  }
+}

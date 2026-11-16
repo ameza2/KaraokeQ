@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { THEMES, THEME_LABELS, type QueueItem, type Singer, type ThemeName } from "@karaoke/shared";
+import { THEMES, THEME_LABELS, type QueueItem, type RoomState, type Singer, type ThemeName } from "@karaoke/shared";
 import { useTheme } from "../lib/theme.ts";
 import Scrubber from "../components/Scrubber.tsx";
 import Search from "./Search.tsx";
@@ -98,7 +98,8 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
   };
   const screenUrl = `${location.protocol}//${lanHost}/r/${code}/screen`;
   const currentHost = state.singers.find((x) => x.id === state.hostId) ?? null;
-  const showScreenHelp = (isHost && !playHere && state.screens === 0) || (playHere && screenReplaced);
+  const casting = state.mode === "lounge";
+  const showScreenHelp = !casting && ((isHost && !playHere && state.screens === 0) || (playHere && screenReplaced));
   const applyName = (n: string) => {
     setSheet(null);
     if (n === name) return;
@@ -167,6 +168,8 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
         canSkip={canControl || state.nowPlaying?.singerId === me}
         time={playback.time}
         canGoBack={state.canGoBack}
+        queueLength={state.queue.length}
+        onStart={() => s.emit("playback:resume")}
         onSkip={() => s.emit("playback:skip")}
         onPause={() => s.emit(state.paused ? "playback:resume" : "playback:pause")}
         onRewind={() => s.emit("playback:rewind")}
@@ -176,7 +179,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           time={playback.time}
           duration={playback.duration}
           known={playback.known}
-          noScreen={state.screens === 0}
+          noScreen={!casting && state.screens === 0}
           onSeek={seekTo}
         />
       )}
@@ -250,6 +253,7 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
           onToggleFairQueue={() => s.emit("settings:update", { fairQueue: !state.settings.fairQueue })}
           theme={state.settings.theme}
           onTheme={(theme) => s.emit("settings:update", { theme })}
+          tv={state.tv}
           playHere={playHere}
           onTogglePlayHere={() => {
             togglePlayHere(!playHere);
@@ -292,6 +296,27 @@ function RoomView({ code, name, onRename, screenMode = false }: { code: string; 
               } else toast({ level: "error", message: r.error });
             })
           }
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === "tv" && (
+        <TvSheet
+          tv={state.tv}
+          casting={casting}
+          onPair={(tvCode) =>
+            new Promise<boolean>((resolve) =>
+              s.emit("tv:pair", { code: tvCode }, (r) => {
+                if (r.ok) toast({ level: "info", message: `Playing on ${r.name}` });
+                resolve(r.ok);
+                if (!r.ok) toast({ level: "error", message: r.error });
+              }),
+            )
+          }
+          onUnpair={() => {
+            s.emit("tv:unpair");
+            toast({ level: "info", message: "Back on the browser screen" });
+            setSheet(null);
+          }}
           onClose={() => setSheet(null)}
         />
       )}
@@ -353,6 +378,8 @@ function NowPlaying(p: {
   canSkip: boolean; // allowed to skip this song
   time: number;
   canGoBack: boolean;
+  queueLength: number;
+  onStart: () => void; // nothing on stage: play the queue
   onSkip: () => void;
   onPause: () => void;
   onRewind: () => void;
@@ -363,7 +390,14 @@ function NowPlaying(p: {
   if (!p.item)
     return (
       <section className="now empty">
-        <span className="muted">Nothing playing. Search for a song to get started!</span>
+        <span className="muted">
+          {p.queueLength ? "Nothing playing, the queue is waiting." : "Nothing playing. Search for a song to get started!"}
+        </span>
+        {p.isHost && p.queueLength > 0 && (
+          <button className="btn small primary" onClick={p.onStart}>
+            ▶ Play the queue
+          </button>
+        )}
         {p.isHost && p.canGoBack && (
           <button className="btn small" onClick={p.onRewind}>
             ⏮ Replay last song
@@ -375,8 +409,8 @@ function NowPlaying(p: {
     <section className="now">
       <img src={p.item.thumb} alt="" />
       <div className="now-info">
-        <div className="eyebrow">{p.paused ? "Paused" : "Now singing"}</div>
-        <div className="now-singer">{p.item.singerName}</div>
+        <div className="eyebrow">{p.paused ? "Paused" : p.item.external ? "Playing on the TV" : "Now singing"}</div>
+        {!p.item.external && <div className="now-singer">{p.item.singerName}</div>}
         <div className="now-title">{p.item.title}</div>
       </div>
       <div className="now-actions">
@@ -406,7 +440,7 @@ function NowPlaying(p: {
   );
 }
 
-type Sheet = null | "menu" | "history" | "share" | "rename" | "host";
+type Sheet = null | "menu" | "history" | "share" | "rename" | "host" | "tv";
 
 function RenameDialog({ current, onSave, onClose }: { current: string; onSave: (n: string) => void; onClose: () => void }) {
   const [value, setValue] = useState(current);
@@ -476,6 +510,7 @@ function MenuSheet({
   onToggleFairQueue,
   theme,
   onTheme,
+  tv,
   playHere,
   onTogglePlayHere,
   onOpen,
@@ -493,6 +528,7 @@ function MenuSheet({
   onToggleFairQueue: () => void;
   theme: ThemeName;
   onTheme: (t: ThemeName) => void;
+  tv: RoomState["tv"];
   playHere: boolean;
   onTogglePlayHere: () => void;
   onOpen: (s: Sheet) => void;
@@ -581,6 +617,15 @@ function MenuSheet({
               <span className="menu-icon">👑</span>
               <span className="menu-text">
                 Make someone else host<span className="muted small">Hand the room over to another singer</span>
+              </span>
+            </button>
+            <button className="menu-item" role="menuitem" onClick={() => onOpen("tv")}>
+              <span className="menu-icon">📡</span>
+              <span className="menu-text">
+                Cast to TV (YouTube app)
+                <span className="muted small">
+                  {tv ? `${tv.name}: ${tv.connected ? "connected" : "reconnecting…"}` : "Pair with the TV's \"Link with TV code\"; every video plays"}
+                </span>
               </span>
             </button>
             {!screenMode && (
@@ -908,6 +953,80 @@ function HostSheet({
         <button className="btn" onClick={onClose}>
           Close
         </button>
+      </div>
+    </div>
+  );
+}
+
+function TvSheet({
+  tv,
+  casting,
+  onPair,
+  onUnpair,
+  onClose,
+}: {
+  tv: RoomState["tv"];
+  casting: boolean;
+  onPair: (code: string) => Promise<boolean>;
+  onUnpair: () => void;
+  onClose: () => void;
+}) {
+  const [digits, setDigits] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pretty = digits.replace(/(d{3})(?=d)/g, "$1 ");
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (digits.length !== 12 || busy) return;
+    setBusy(true);
+    const ok = await onPair(digits);
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>Cast to TV</h2>
+        {tv && casting ? (
+          <>
+            <p>
+              Playing on <b>{tv.name}</b> ({tv.connected ? "connected" : "reconnecting…"}). Every video works here, and ads follow the account the TV is signed in to.
+            </p>
+            <div className="row">
+              <button className="btn" onClick={onUnpair}>
+                Stop casting
+              </button>
+              <button className="btn" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <form onSubmit={submit}>
+            <ol className="muted small">
+              <li>Open the YouTube app on the TV (signed in to the Premium account).</li>
+              <li>Go to Settings → Link with TV code.</li>
+              <li>Type the 12-digit code here.</li>
+            </ol>
+            <input
+              className="input"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="123 456 789 012"
+              aria-label="TV code"
+              value={pretty}
+              onChange={(e) => setDigits(e.target.value.replace(/D/g, "").slice(0, 12))}
+              autoFocus
+            />
+            <div className="row">
+              <button className="btn primary" disabled={digits.length !== 12 || busy}>
+                {busy ? "Connecting…" : "Pair TV"}
+              </button>
+              <button type="button" className="btn" onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

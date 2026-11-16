@@ -27,6 +27,7 @@ export default function Search({
   const [data, setData] = useState<SearchPage | null>(null);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [page, setPage] = useState(0);
+  const [epoch, setEpoch] = useState(0); // bumped when the output mode changes, to force a fresh fetch
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
@@ -111,7 +112,7 @@ export default function Search({
     return () => ctrl.abort();
     // `data` intentionally omitted: we only refetch when the requirement grows
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, needed, mode]);
+  }, [query, needed, epoch]);
 
   function submit(text: string) {
     const t = text.trim();
@@ -128,6 +129,7 @@ export default function Search({
   useEffect(() => {
     setData(null);
     setPage(0);
+    setEpoch((e) => e + 1); // the fetch effect above doesn't otherwise re-run when nothing else changed
   }, [mode]);
 
   const results = data?.results ?? [];

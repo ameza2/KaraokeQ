@@ -49,6 +49,8 @@ export interface QueueItem extends VideoResult {
   singerName: string;
   addedAt: number;
   playedAt?: number; // set on history entries
+  /** Started on the TV itself (its remote), not queued here. Never logged or replayed. */
+  external?: boolean;
 }
 
 export type OutputMode = "screen" | "lounge";
@@ -74,6 +76,8 @@ export interface RoomState {
   /** Device id of the room's active screen. That device gets the host's permissions. */
   screenId: string | null; // singerId of the current host (null until someone claims a TV room)
   settings: RoomSettings;
+  /** A TV paired through "Link with TV code" (mode "lounge" while it's the output). */
+  tv: { name: string; connected: boolean } | null;
 }
 
 // Commands the server sends to a /screen display.
@@ -122,6 +126,10 @@ export interface ClientToServer {
   "playback:seek": (p: { seconds: number }) => void;
   "host:transfer": (p: { singerId: string }, ack: (r: Ack) => void) => void;
   "settings:update": (p: Partial<RoomSettings>) => void;
+  /** Host/screen: pair the TV's YouTube app with the 12-digit "Link with TV code" and play there. */
+  "tv:pair": (p: { code: string }, ack: (r: Ack<{ name: string }>) => void) => void;
+  /** Host/screen: stop casting and go back to the browser screen. */
+  "tv:unpair": () => void;
   "screen:progress": (p: Progress) => void;
   "screen:join": (p: { code: string; deviceId?: string; host?: string }, ack: (r: Ack<{ state: RoomState }>) => void) => void;
   "screen:event": (e: ScreenEvent) => void;
