@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import type { QueueItem, RoomState, ScreenCommand } from "@karaoke/shared";
+import type { QueueItem, ReplacedBy, RoomState, ScreenCommand } from "@karaoke/shared";
 import { qrSrc, useJoinUrl } from "../../lib/joinUrl.ts";
 import { connect, type KSocket } from "../../lib/socket.ts";
 import Scrubber from "../../components/Scrubber.tsx";
 import { BlockedOverlay, IdleScreen, ReplacedNotice, type BlockInfo } from "./ScreenOverlays.tsx";
-import type { ReplacedBy } from "./takeover.ts";
 import { useFullscreen } from "./useFullscreen.ts";
 
 // Minimal typings for the YouTube IFrame Player API.

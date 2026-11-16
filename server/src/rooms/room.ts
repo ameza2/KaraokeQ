@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Server } from "socket.io";
-import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, RoomSettings, ScreenCommand, RoomState, ServerToClient, VideoResult } from "@karaoke/shared";
+import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, ReplacedBy, RoomSettings, ScreenCommand, RoomState, ServerToClient, VideoResult } from "@karaoke/shared";
 import type { PlaybackOutput } from "../playback/output.ts";
 import { ScreenOutput } from "../playback/screen.ts";
 import type { LoungeOutput } from "../playback/lounge.ts";
@@ -254,7 +254,7 @@ export class Room {
    * One output per room: tell every joined screen (except `except`) that it was replaced
    * and drop it. `by` says what took over, for the message the old screen shows.
    */
-  replaceScreens(except: string | null, by: "screen" | "cast") {
+  replaceScreens(except: string | null, by: ReplacedBy) {
     for (const id of [...this.screens]) {
       if (id === except) continue;
       const old = this.io.sockets.sockets.get(id);

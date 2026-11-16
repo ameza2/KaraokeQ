@@ -58,6 +58,12 @@ export interface QueueItem extends Omit<VideoResult, "thumb"> {
 
 export type OutputMode = "screen" | "lounge";
 
+/** What took over a room's output: another screen, or the YouTube cast. */
+export type ReplacedBy = "screen" | "cast";
+
+/** Why the screen is holding a song: a raw address, another device, or the account's plan limit. */
+export type BlockReason = "ip" | "device" | "limit";
+
 export interface Singer {
   id: string;
   name: string;
@@ -156,9 +162,9 @@ export interface ServerToClient {
   "screen:command": (c: ScreenCommand) => void;
   "playback:progress": (p: Progress) => void;
   /** Sent to a screen right before it's disconnected because another screen joined or a YouTube cast was paired. */
-  "screen:replaced": (by: "screen" | "cast") => void;
+  "screen:replaced": (by: ReplacedBy) => void;
   /** This screen's address (a raw IP) is blocked for the current video; others may play it. */
-  "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: "ip" | "device" | "limit" }) => void;
+  "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: BlockReason }) => void;
   /** Sent to a singer who was just made host: their proof for future reconnects. */
   "host:token": (p: { hostToken: string }) => void;
   /** The room was deleted (by the admin). The socket is disconnected right after. */

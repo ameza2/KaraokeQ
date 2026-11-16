@@ -1,8 +1,8 @@
 import { useState } from "react";
-import type { QueueItem } from "@karaoke/shared";
+import type { BlockReason, QueueItem, ReplacedBy } from "@karaoke/shared";
 import { moveOffIpAddress } from "../../lib/hostRedirect.ts";
 import { qrSrc } from "../../lib/joinUrl.ts";
-import { takenOverText, type ReplacedBy } from "./takeover.ts";
+import { takenOverText } from "./takeover.ts";
 
 /** Presentational pieces of the screen player: they hold no playback state of their own. */
 
@@ -10,7 +10,7 @@ import { takenOverText, type ReplacedBy } from "./takeover.ts";
 export interface BlockInfo {
   itemId: string;
   shareHost: string | null;
-  reason: "ip" | "device" | "limit";
+  reason: BlockReason;
 }
 
 /** Shown in place of the player once another screen or the YouTube cast has taken over. */

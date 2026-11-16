@@ -1,10 +1,10 @@
 import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
-import type { VideoResult } from "@karaoke/shared";
+import type { ReplacedBy, VideoResult } from "@karaoke/shared";
 import { Link } from "react-router-dom";
 import { useTheme } from "../../lib/theme.ts";
 import Search from "../search/Search.tsx";
 import type { PlayerHandle } from "../screen/ScreenPlayer.tsx";
-import { takenOverText, type ReplacedBy } from "../screen/takeover.ts";
+import { takenOverText } from "../screen/takeover.ts";
 import { useLanHost } from "../../lib/joinUrl.ts";
 import { isPlayerDevice, setPlayerDevice } from "../../lib/storage.ts";
 import { useRoom } from "../../lib/useRoom.ts";
