@@ -59,6 +59,7 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 | `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, performance history, settings and the admin login are kept |
 | `KARAOKE_MAX_ROOMS` | `200` | Rooms the server keeps open at once; creating more answers 503 |
 | `KARAOKE_ROOM_CREATE_PER_MIN` | `20` | Rooms one address may create per minute |
+| `KARAOKE_CSP_ENFORCE` | unset (report-only) | Set to `1` to enforce the Content-Security-Policy instead of only reporting violations to the log |
 | `CHROME_PATH` | standard install location | Only for `npm run smoke`: the Chrome executable to drive |
 | `API_URL` | `http://localhost:3001` | Dev only: where Vite proxies the API |
 
@@ -183,6 +184,7 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
   - Hover or tap a chart for the value at that time. A break in a line means the server was off.
   - "Show the numbers as a table" lists the same data.
 - **Logs:** the system log or one room's log (including closed rooms), filtered by level, with a live view.
+- **Verbose YouTube cast log:** a checkbox, off by default. When on, the log also records every command sent to the TV and every event it reports (very chatty; for debugging a cast). The setting is saved in `data/settings.json`.
 - **Log files** are local files only, never a database:
   - `data/logs/server-YYYY-MM-DD.log` has every line, one file per day. The last 30 days are kept; older days are deleted automatically.
   - `data/logs/rooms/<CODE>.log` has one room's lines: created, joins, songs queued and played, host changes, settings, screen errors, closed. Each file holds at most 5 MB; when it's full, the oldest lines make room for new ones.
