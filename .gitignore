@@ -5,3 +5,7 @@ dist/
 
 # play log (every song played in every room)
 data/
+
+# project-specific AI assistant rules and skills (local only)
+.claude/rules/
+.claude/skills/
