@@ -16,6 +16,7 @@ import { publicRoutes } from "./http/publicRoutes.ts";
 import { errorHandler } from "./http/errors.ts";
 import { staticClient } from "./http/staticClient.ts";
 import { noStore, securityHeaders } from "./http/security.ts";
+import { cspHeader, cspReportRoute } from "./http/csp.ts";
 import { registerSocketHandlers, type SocketData } from "./sockets/index.ts";
 
 // Capture console output into the log files before anything else logs.
@@ -28,6 +29,7 @@ app.set("trust proxy", true);
 app.disable("x-powered-by");
 app.use(compression()); // gzip text responses over 1kB (the client bundle: 341kB -> ~108kB)
 app.use(securityHeaders);
+app.use(cspHeader);
 app.use(express.json({ limit: "20kb" }));
 
 const http = createServer(app);
@@ -53,6 +55,7 @@ metrics.start();
 // ---------- HTTP API ----------
 startShareHostWatch();
 publicRoutes(app, { rooms, playLog });
+cspReportRoute(app);
 app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));
 staticClient(app); // keep last: the /api 404 catch-all and the built client
 app.use(errorHandler); // after every route
