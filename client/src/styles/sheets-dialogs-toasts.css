@@ -1,0 +1,227 @@
+/* ---------- sheets, dialog, toasts ---------- */
+.sheet-backdrop,
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgb(var(--ink-rgb) / 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: fade 0.2s ease-out;
+}
+.sheet-backdrop {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 480px;
+  border-radius: 28px 28px 0 0;
+  padding: 1.6rem 16px 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  text-align: center;
+  animation: rise 0.25s ease-out;
+}
+.sheet h2 {
+  margin: 0;
+}
+.sheet.menu {
+  align-items: stretch;
+  text-align: left;
+  gap: 0.3rem;
+}
+.sheet.menu h2 {
+  margin: 0 0.4rem 0.4rem;
+}
+.sheet.menu > .btn {
+  margin-top: 0.6rem;
+}
+.sheet.menu {
+  max-height: 88dvh;
+  overflow-y: auto;
+}
+.menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.menu-section + .menu-section {
+  border-top: 1px solid rgb(var(--rim-rgb) / 0.12);
+  margin-top: 0.4rem;
+  padding-top: 0.6rem;
+}
+.menu-section-title {
+  margin: 0 0.7rem 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.sheet.tall {
+  max-height: 85dvh;
+  align-items: stretch;
+  text-align: left;
+}
+.sheet.tall h2,
+.sheet.tall > p {
+  text-align: center;
+  margin: 0;
+}
+.list.scroll {
+  overflow-y: auto;
+  margin: 0.25rem 0;
+  min-height: 0;
+  flex: 1;
+}
+.list.scroll .song {
+  background: rgb(var(--surface-2-rgb) / 0.45);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 0.85rem 0.7rem;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--raised);
+  outline: none;
+}
+.menu-icon {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  background: rgb(var(--accent-rgb) / 0.14);
+  color: var(--accent);
+  flex: none;
+}
+.menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.menu-text .muted {
+  font-weight: 400;
+}
+
+.qr {
+  width: 220px;
+  height: 220px;
+  background: #f4e9dd; /* QR needs a light field to scan */
+  border-radius: 18px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+.big-code {
+  font-size: 2.2rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  margin: 0;
+}
+
+.dialog-backdrop {
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.dialog {
+  width: 100%;
+  max-width: 360px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--edge);
+  border-radius: 26px;
+  padding: 1.5rem 1.3rem 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  box-shadow: var(--shadow-lg);
+  animation: pop 0.18s ease-out;
+}
+.dialog h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.dialog p {
+  margin: -0.4rem 0 0;
+}
+.dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+.dialog-actions .btn {
+  min-width: 6rem;
+}
+
+.toasts {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 16px;
+  z-index: 50;
+  pointer-events: none;
+}
+.toast {
+  background: var(--glass-strong);
+  padding: 0.75rem 1.1rem;
+  border-radius: 999px;
+  max-width: 460px;
+  width: fit-content;
+  box-shadow: var(--shadow-lg);
+  animation: rise 0.2s ease-out;
+  font-size: 0.92rem;
+}
+.toast.error {
+  background: var(--danger-bg);
+  color: var(--on-danger);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+}
+
