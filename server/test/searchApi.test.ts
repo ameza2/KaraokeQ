@@ -24,12 +24,6 @@ describe("GET /api/search", () => {
     assert.ok(p0.total >= 10);
   });
 
-  it("still answers the older ?limit= form with the first N results", async () => {
-    const r = await get("q=abba&limit=15");
-    assert.equal(r.page, 0);
-    assert.equal(r.results.length, 15);
-  });
-
   it("copes with a nonsense page or page size", async () => {
     const r = await get("q=abba&page=-4&pageSize=100000");
     assert.equal(r.page, 0);

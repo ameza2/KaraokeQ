@@ -2,8 +2,6 @@ import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 import { MODE_LABELS, PAGE_SIZES, type ApiError, type OutputMode, type SearchPage, type SuggestResponse, type VideoResult } from "@karaoke/shared";
 import { load, save } from "../../lib/storage.ts";
 
-const MAX = 100;
-
 function initialPageSize(): number {
   const n = Number(load("karaoke:pageSize"));
   return (PAGE_SIZES as readonly number[]).includes(n) ? n : 25;
@@ -30,6 +28,10 @@ function Search({
   const [epoch, setEpoch] = useState(0); // bumped when the output mode changes, to force a fresh fetch
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null); // something worth saying about the page, not an error
+  const pages = useRef(new Map<number, SearchPage>()); // pages already loaded for this search, by number
+  const searchSig = useRef(""); // which search, page size and mode `pages` belongs to
+  const version = useRef<string | null>(null); // the server's version of this search
   const [adding, setAdding] = useState<string | null>(null);
   const listTop = useRef<HTMLDivElement>(null);
 
@@ -88,21 +90,43 @@ function Search({
     }
   }
 
-  // ----- fetching: grow the result set as the user pages forward -----
-  const needed = Math.min(MAX, (page + 1) * pageSize);
-  const have = data?.results.length ?? 0;
-
+  // ----- fetching: one page at a time; pages already loaded are kept for Prev -----
   useEffect(() => {
     if (!query) return;
-    if (data && (have >= needed || !data.hasMore)) return; // already enough
+    const sig = `${query}|${pageSize}|${epoch}`;
+    if (searchSig.current !== sig) {
+      searchSig.current = sig; // a new search, page size or mode: nothing loaded so far applies
+      pages.current.clear();
+      version.current = null;
+    }
+    const loaded = pages.current.get(page);
+    if (loaded) {
+      setData(loaded);
+      setLoading(false);
+      return;
+    }
     const ctrl = new AbortController();
     setLoading(true);
     setErr(null);
-    fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${needed}&room=${code}`, { signal: ctrl.signal })
+    fetch(`/api/search?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}&room=${code}`, { signal: ctrl.signal })
       .then(async (res) => {
         const body: SearchPage | ApiError = await res.json();
         if ("error" in body) throw new Error(body.error);
+        if (version.current && version.current !== body.version) {
+          // The server rebuilt this search (it was idle too long): the pages kept here belong to another list.
+          pages.current.clear();
+          version.current = body.version;
+          if (page > 0) {
+            setNote("The results were refreshed, so you are back on page 1.");
+            setPage(0);
+            return;
+          }
+        }
+        version.current = body.version;
+        pages.current.set(body.page, body);
+        setNote(body.busy ? "Search is busy. This is the furthest page ready; try Next again in a moment." : null);
         setData(body);
+        if (body.page !== page) setPage(body.page); // asked for a page past the end: this is the last one
         if (!body.results.length) setErr("No playable results. Try the artist and song name.");
       })
       .catch((e) => {
@@ -110,9 +134,7 @@ function Search({
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-    // `data` intentionally omitted: we only refetch when the requirement grows
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, needed, epoch]);
+  }, [query, page, pageSize, epoch]);
 
   function submit(text: string) {
     const t = text.trim();
@@ -122,6 +144,7 @@ function Search({
     setQ(t);
     setPage(0);
     setData(null);
+    setNote(null);
     setQuery(t === query ? `${t} ` : t); // re-run even if it's the same text
   }
 
@@ -129,15 +152,16 @@ function Search({
   useEffect(() => {
     setData(null);
     setPage(0);
+    setNote(null);
     setEpoch((e) => e + 1); // the fetch effect above doesn't otherwise re-run when nothing else changed
   }, [mode]);
 
-  const results = data?.results ?? [];
-  const pageItems = results.slice(page * pageSize, (page + 1) * pageSize);
-  const lastLoadedPage = Math.max(0, Math.ceil(results.length / pageSize) - 1);
-  const canNext = (page + 1) * pageSize < MAX && (page < lastLoadedPage || !!data?.hasMore);
+  const pageItems = data?.results ?? [];
+  const shownPage = data?.page ?? page;
+  const first = shownPage * pageSize + 1;
 
   function goTo(p: number) {
+    setNote(null);
     setPage(p);
     listTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -205,8 +229,8 @@ function Search({
             value={pageSize}
             onChange={(e) => {
               const n = Number(e.target.value);
+              setPage(Math.floor((shownPage * pageSize) / n)); // keep the first song on screen
               setPageSize(n);
-              setPage(0);
               save("karaoke:pageSize", String(n));
             }}
           >
@@ -225,8 +249,9 @@ function Search({
       </p>
 
       {err && <p className="muted">{err}</p>}
+      {note && <p className="muted small">{note}</p>}
       <div ref={listTop} />
-      {loading && pageItems.length === 0 && <p className="muted center pad">Searching…</p>}
+      {loading && pageItems.length === 0 && !err && <p className="muted center pad">Searching…</p>}
 
       <ul className="list">
         {pageItems.map((v) => {
@@ -257,15 +282,13 @@ function Search({
         })}
       </ul>
 
-      {results.length > 0 && (
+      {data && pageItems.length > 0 && (
         <nav className="pager">
-          <button className="btn small" disabled={page === 0} onClick={() => goTo(page - 1)}>
+          <button className="btn small" disabled={shownPage === 0 || loading} onClick={() => goTo(shownPage - 1)}>
             ‹ Prev
           </button>
-          <span className="muted small">
-            {loading ? "Loading…" : `${page * pageSize + 1}–${page * pageSize + pageItems.length} of ${data?.hasMore ? `${results.length}+` : results.length}`}
-          </span>
-          <button className="btn small" disabled={!canNext || loading} onClick={() => goTo(page + 1)}>
+          <span className="muted small">{loading ? "Loading…" : `${first}–${first + pageItems.length - 1} of ${data.total}${data.hasMore ? "+" : ""}`}</span>
+          <button className="btn small" disabled={!data.hasMore || loading} onClick={() => goTo(shownPage + 1)}>
             Next ›
           </button>
         </nav>

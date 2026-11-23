@@ -39,11 +39,7 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
       // Filter by what the room's current output can play (default: web player).
       const room = rooms.get(String(req.query.room ?? ""));
       const playableOnly = (room?.mode ?? "screen") === "screen";
-      // ?page= and ?pageSize= (the paged API). ?limit= is the older "first N results" form.
-      const legacy = req.query.page === undefined && req.query.limit !== undefined;
-      const page = legacy ? 0 : Number(req.query.page ?? 0);
-      const pageSize = Number(legacy ? req.query.limit : (req.query.pageSize ?? 25));
-      res.json((await searchVideos(String(req.query.q ?? ""), page, pageSize, playableOnly)) satisfies SearchPage);
+      res.json((await searchVideos(String(req.query.q ?? ""), Number(req.query.page ?? 0), Number(req.query.pageSize ?? 25), playableOnly)) satisfies SearchPage);
     } catch (err) {
       if (err instanceof SearchBusyError) return void res.status(503).json({ error: err.message } satisfies ApiError);
       console.error("search failed:", err);
