@@ -7,12 +7,14 @@ import { SignIn } from "./SignIn.tsx";
 import { PasswordForm } from "./PasswordForm.tsx";
 import { RoomsTab } from "./RoomsTab.tsx";
 import { AppearanceTab } from "./AppearanceTab.tsx";
+import { DebugTab } from "./DebugTab.tsx";
 
-type Tab = "rooms" | "appearance" | "account";
+type Tab = "rooms" | "appearance" | "debug" | "account";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "rooms", label: "Rooms" },
   { id: "appearance", label: "Appearance" },
+  { id: "debug", label: "Debug" },
   { id: "account", label: "Account" },
 ];
 
@@ -94,6 +96,7 @@ export default function Admin() {
 
       {tab === "rooms" && <RoomsTab run={run} />}
       {tab === "appearance" && <AppearanceTab run={run} theme={session.adminTheme} onChange={(adminTheme) => setSession({ ...session, adminTheme })} />}
+      {tab === "debug" && <DebugTab run={run} />}
       {tab === "account" && (
         <section className="admin-panel">
           <h2>Change password</h2>
