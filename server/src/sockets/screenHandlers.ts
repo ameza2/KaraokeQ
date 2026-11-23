@@ -10,6 +10,13 @@ export function screenHandlers({ socket, rooms, room, leave }: SocketContext) {
   socket.on("screen:join", async ({ code, deviceId, host }, ack) => {
     const r = rooms.get(code);
     if (!r) return ack({ ok: false, error: "That room doesn't exist (or has expired)." });
+    // One output per room: the newest one wins. A screen joining stops the YouTube cast
+    // (the host pairs again to cast), and older screens are told and dropped.
+    if (r.mode === "lounge") await r.useScreen("Another screen has taken over. Pair again to cast.");
+    await r.dropUnembeddable(); // a room that cast: songs the web player can't play are removed
+    // The awaits above can take seconds. If the socket hung up meanwhile, stop here: adding it
+    // now would leave a screen that never disconnects (and a room that never expires).
+    if (!socket.connected) return;
     if (socket.data.code && socket.data.code !== r.code) leave();
     r.replaceScreens(socket.id, "screen");
 

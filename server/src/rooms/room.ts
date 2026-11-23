@@ -7,6 +7,7 @@ import type { LoungeOutput } from "../playback/lounge.ts";
 import type { ScreenInfo } from "../playback/screen.ts";
 import { toPlayRecord, type PlayLog } from "../playLog.ts";
 import { THEMES } from "@karaoke/shared";
+import { RoomCast } from "./cast.ts";
 import { EmbedBlockPolicy } from "./embedBlocks.ts";
 
 type IO = Server<ClientToServer, ServerToClient>;
@@ -115,6 +116,7 @@ export class Room {
   /** The browser screen output; always present (idle while a YouTube cast is the output). */
   readonly screenOutput: ScreenOutput;
   private readonly embedBlocks: EmbedBlockPolicy;
+  private readonly cast: RoomCast;
   /** The YouTube cast (the TV's YouTube app), when one is paired. */
   lounge: LoungeOutput | null = null;
 
@@ -139,6 +141,7 @@ export class Room {
     private log: PlayLog,
   ) {
     this.embedBlocks = new EmbedBlockPolicy(this, io);
+    this.cast = new RoomCast(this);
     this.screenOutput = this.attach(new ScreenOutput(io, code));
     log.openRoom({ roomId: this.id, roomCode: code, createdAt: this.createdAt });
     this.say("room created");
@@ -508,6 +511,20 @@ export class Room {
     this.broadcast();
   }
 
+  // ---------- YouTube cast (see cast.ts) ----------
+
+  pairCast(rawCode: string) {
+    return this.cast.pairCast(rawCode);
+  }
+
+  dropUnembeddable() {
+    return this.cast.dropUnembeddable();
+  }
+
+  useScreen(message?: string, opts: { leaveTv?: boolean } = {}) {
+    return this.cast.useScreen(message, opts);
+  }
+
   /** Nothing on stage (the queue is untouched). */
   clearStage() {
     this.nowPlaying = null;
@@ -521,5 +538,6 @@ export class Room {
     if (this.hostAwayTimer) clearTimeout(this.hostAwayTimer);
     this.log.closeRoom(this.id);
     await this.screenOutput.dispose();
+    await this.cast.dispose();
   }
 }
