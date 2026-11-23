@@ -25,6 +25,11 @@ describe("HTTP headers", () => {
     assert.equal(res.headers.get("x-powered-by"), null);
   });
 
+  it("never caches admin responses", async () => {
+    const res = await fetch(`${server.url}/api/admin/session`);
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  });
+
   it("returns JSON for unknown API paths", async () => {
     const res = await fetch(`${server.url}/api/nope`);
     assert.equal(res.status, 404);
