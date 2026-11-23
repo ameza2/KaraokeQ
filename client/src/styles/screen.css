@@ -163,6 +163,9 @@
   inset: 0;
   z-index: 1;
 }
+.seek-catcher.clickable {
+  cursor: pointer;
+}
 .seekbar {
   left: 1.2em;
   right: 1.2em;

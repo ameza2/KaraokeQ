@@ -392,9 +392,17 @@ export default function ScreenPlayer({
     };
   }, [fsBar, duration]);
 
-  /** Tap/click on the video: touch shows the controls first; otherwise toggles pause (like YouTube). */
+  /**
+   * Tap/click on the video toggles pause (like YouTube). In full screen, touch shows the
+   * controls first. In the small window only people who can control playback may do it.
+   */
   const onVideoPointer = (e: React.PointerEvent) => {
-    if (!fsBar || !startedRef.current) return;
+    const c = controlsRef.current;
+    if (!c || !startedRef.current) return;
+    if (!fsBar) {
+      if (c.canControl) c.onTogglePause();
+      return;
+    }
     const wasVisible = uiVisible;
     poke();
     if (e.pointerType === "touch" && !wasVisible) return;
@@ -462,7 +470,7 @@ export default function ScreenPlayer({
           {state?.paused && <div className="paused-badge">Paused</div>}
           {big && !fsBar && <ScreenSeekBar time={time} duration={duration} paused={!!state?.paused} onSeek={seek} />}
           {/* catches pointer input over the iframe (which would otherwise swallow it) */}
-          <div className="seek-catcher" onPointerUp={onVideoPointer} />
+          <div className={`seek-catcher${controls?.canControl ? " clickable" : ""}`} onPointerUp={onVideoPointer} />
           {fsBar && controls && (
             <FullControls
               c={controls}
