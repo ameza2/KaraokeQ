@@ -1,0 +1,173 @@
+// Types shared between the server and the client.
+
+export interface VideoResult {
+  videoId: string;
+  title: string;
+  channel: string;
+  duration: string;
+  thumb: string;
+  /** false = uploader blocked playback outside youtube.com (won't work on /screen). */
+  embeddable?: boolean;
+}
+
+// ---------- colour presets ----------
+// Each room has its own preset (chosen by its host); the admin page has one too.
+
+export const THEMES = ["orange", "blue", "white", "green"] as const;
+export type ThemeName = (typeof THEMES)[number];
+export const THEME_LABELS: Record<ThemeName, string> = { orange: "Orange", blue: "Blue", white: "White", green: "Green" };
+export const DEFAULT_THEME: ThemeName = "orange";
+
+export interface RoomSettings {
+  /** Everyone gets the host's playback/queue controls (skip, back, seek, reorder, remove). */
+  openControls: boolean;
+  /**
+   * Fair queue (default on): a new request goes after every other singer's song of the
+   * same round, so people with fewer songs queued go first. Off: first come, first served.
+   */
+  fairQueue: boolean;
+  /** The room's colour preset, on every device in the room. */
+  theme: ThemeName;
+}
+
+export interface SearchPage {
+  results: VideoResult[];
+  hasMore: boolean;
+  hidden: number; // results dropped because they can't play on the current output
+}
+
+export const PAGE_SIZES = [10, 25, 50, 100] as const;
+
+export const MODE_LABELS: Record<OutputMode, { name: string; hint: string }> = {
+  screen: { name: "Web Player", hint: "Only showing videos that can play in the browser." },
+  lounge: { name: "YouTube", hint: "Casting to the TV's YouTube app, so every video works." },
+};
+
+/** Thumbnails are not sent with queue items: build the URL from the video id (thumbUrl). */
+export const thumbUrl = (videoId: string) => `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
+export interface QueueItem extends Omit<VideoResult, "thumb"> {
+  id: string;
+  singerId: string;
+  singerName: string;
+  addedAt: number;
+  playedAt?: number; // set on history entries
+  /** Started on the TV itself (its remote), not queued here. Never logged or replayed. */
+  external?: boolean;
+}
+
+export type OutputMode = "screen" | "lounge";
+
+/** What took over a room's output: another screen, or the YouTube cast. */
+export type ReplacedBy = "screen" | "cast";
+
+/** Why the screen is holding a song: a raw address, another device, or the account's plan limit. */
+export type BlockReason = "ip" | "device" | "limit";
+
+export interface Singer {
+  id: string;
+  name: string;
+  screen?: boolean; // the room's screen device (not a person)
+  online: boolean;
+}
+
+export interface RoomState {
+  code: string;
+  mode: OutputMode;
+  nowPlaying: QueueItem | null;
+  paused: boolean;
+  queue: QueueItem[];
+  singers: Singer[];
+  screens: number; // connected /screen displays
+  /** Songs in the room history (the list itself is fetched with "history:get" when someone opens it). */
+  historyCount: number;
+  /** Changes whenever the history does, so an open history list knows to refetch. */
+  historyRev: number;
+  canGoBack: boolean; // ⏮ can return to the previous song (one step only)
+  hostId: string | null;
+  /** Device id of the room's active screen. That device gets the host's permissions. */
+  screenId: string | null; // singerId of the current host (null until someone claims a TV room)
+  settings: RoomSettings;
+  /** The host has had no connected device for a while: any singer may claim host. */
+  hostClaimable: boolean;
+  /** The YouTube cast is still applying a pause/resume: phones disable the button until the TV confirms. */
+  pausePending: boolean;
+  /** The YouTube cast, paired through the TV's "Link with TV code" (mode "lounge" while it's the output). */
+  cast: { name: string; connected: boolean } | null;
+}
+
+// Commands the server sends to a /screen display.
+export type ScreenCommand =
+  | { action: "play"; item: QueueItem; startAt?: number; paused?: boolean }
+  | { action: "pause" }
+  | { action: "resume" }
+  | { action: "seek"; seconds: number }
+  | { action: "stop" };
+
+/** Playback position, reported by a screen and relayed to phones. */
+export interface Progress {
+  itemId: string;
+  time: number; // seconds
+  duration: number; // seconds (0 = unknown yet)
+}
+
+// Events a /screen display reports back.
+export interface ScreenEvent {
+  type: "ended" | "error" | "playing" | "paused" | "skip-blocked";
+  itemId: string;
+  errorCode?: number;
+  /** For "error": the video had reached the playing state before it failed (so it wasn't blocked at load). */
+  played?: boolean;
+}
+
+export interface Notice {
+  level: "info" | "error";
+  message: string;
+}
+
+export type Ack<T = {}> = ({ ok: true } & T) | { ok: false; error: string };
+
+export interface ClientToServer {
+  "room:join": (
+    p: { code: string; singerId: string; name: string; hostToken?: string; asScreen?: boolean },
+    ack: (r: Ack<{ state: RoomState; isHost: boolean; hostToken?: string }>) => void,
+  ) => void;
+  "singer:rename": (p: { name: string }) => void;
+  "queue:add": (p: { video: VideoResult }, ack: (r: Ack) => void) => void;
+  "queue:remove": (p: { itemId: string }) => void;
+  "queue:move": (p: { itemId: string; toIndex: number }) => void;
+  "playback:skip": () => void;
+  "playback:rewind": () => void;
+  /** The room history, most recent first (capped at 30). */
+  "history:get": (ack: (r: Ack<{ items: QueueItem[] }>) => void) => void;
+  "history:replay": (p: { itemId: string }, ack: (r: Ack) => void) => void;
+  "playback:pause": () => void;
+  "playback:resume": () => void;
+  "playback:seek": (p: { seconds: number }) => void;
+  "host:transfer": (p: { singerId: string }, ack: (r: Ack) => void) => void;
+  /** Any singer: take host once the host has been fully disconnected for 5 minutes. */
+  "host:claim": (ack: (r: Ack) => void) => void;
+  "settings:update": (p: Partial<RoomSettings>) => void;
+  /** Host/screen: pair the TV's YouTube app with the 12-digit "Link with TV code" and play there. */
+  "cast:pair": (p: { code: string }, ack: (r: Ack<{ name: string }>) => void) => void;
+  /** Host/screen: stop casting and go back to the browser screen. */
+  "cast:unpair": () => void;
+  "screen:progress": (p: Progress) => void;
+  "screen:join": (p: { code: string; deviceId?: string; host?: string }, ack: (r: Ack<{ state: RoomState }>) => void) => void;
+  "screen:event": (e: ScreenEvent) => void;
+}
+
+export interface ServerToClient {
+  "room:state": (s: RoomState) => void;
+  "screen:command": (c: ScreenCommand) => void;
+  "playback:progress": (p: Progress) => void;
+  /** Sent to a screen right before it's disconnected because another screen joined or a YouTube cast was paired. */
+  "screen:replaced": (by: ReplacedBy) => void;
+  /** This screen's address (a raw IP) is blocked for the current video; others may play it. */
+  "screen:blocked": (p: { itemId: string; shareHost: string | null; reason: BlockReason }) => void;
+  /** Sent to a singer who was just made host: their proof for future reconnects. */
+  "host:token": (p: { hostToken: string }) => void;
+  /** The room was deleted (by the admin). The socket is disconnected right after. */
+  "room:closed": (p: { message: string }) => void;
+  notice: (n: Notice) => void;
+}
