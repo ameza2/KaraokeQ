@@ -1,0 +1,329 @@
+/* =====================================================================
+   Karaoke — warm, dark minimalist theme
+   Deep umber field with soft ember/amber glows, smoked-glass surfaces.
+   All colors come from the tokens below.
+   ===================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /*
+   * Colour presets: every colour below is a token, and the admin's preset
+   * (data-theme on <html>, see lib/theme.ts) overrides them further down.
+   * Triplets ("r g b") are used as rgb(var(--x) / alpha).
+   */
+
+  /* base */
+  --bg: #15100d;
+  --text: #f4e9dd; /* warm cream */
+  --muted: #a8978a;
+  --faint: #6e6159;
+  --ink-rgb: 10 7 5; /* scrims over video */
+  --ink-2-rgb: 24 18 15;
+
+  /* smoked glass */
+  --surface-rgb: 48 37 31;
+  --surface-2-rgb: 62 48 40;
+  --surface-3-rgb: 88 58 42;
+  --rim-rgb: 255 220 185; /* faint rim instead of borders */
+  --glass: rgb(var(--surface-rgb) / 0.48);
+  --glass-strong: rgb(44 34 28 / 0.86);
+  --glass-hover: rgb(var(--surface-2-rgb) / 0.7);
+  --raised: rgb(74 58 48 / 0.7); /* selected tab, hovered buttons */
+  --edge: rgb(var(--rim-rgb) / 0.08);
+  --hairline: rgb(var(--rim-rgb) / 0.08);
+  --shadow: 0 12px 32px -14px rgb(0 0 0 / 0.65);
+  --shadow-lg: 0 26px 64px -22px rgb(0 0 0 / 0.8);
+  --blur: blur(20px) saturate(1.3);
+
+  /* backdrop glows */
+  --glow-1: 196 98 60;
+  --glow-2: 91 58 74;
+  --glow-3: 217 148 75;
+  --glow-4: 168 85 95;
+  --light-rgb: 255 214 170; /* the soft central light */
+  --ember: rgb(var(--glow-1));
+  --amber: rgb(var(--glow-3));
+  --rose: rgb(var(--glow-4));
+  --plum: rgb(var(--glow-2));
+
+  /* accents */
+  --accent-rgb: 240 168 104;
+  --accent: rgb(var(--accent-rgb)); /* readable on dark */
+  --grad-a: #f2b37a;
+  --grad-b: #e4876b;
+  --grad-b-rgb: 228 135 107;
+  --accent-grad: linear-gradient(135deg, var(--grad-a) 0%, var(--grad-b) 100%);
+  --on-accent: #22160f;
+  --accent-ring: rgb(var(--accent-rgb) / 0.28);
+  --danger: #f08a8a;
+  --danger-rgb: 240 138 138;
+  --danger-bg: rgb(120 40 45 / 0.6);
+  --on-danger: #ffe1dc;
+  --ok: #6ed696; /* online / healthy status (the same in every colour preset) */
+  --ok-rgb: 110 214 150;
+  --warn-bg: rgb(120 72 30 / 0.4);
+  --track: rgb(var(--rim-rgb) / 0.14);
+
+  --radius: 20px;
+  --radius-sm: 14px;
+}
+
+/* ---------- colour presets (orange is the default above) ---------- */
+:root[data-theme="blue"] {
+  --bg: #0c1118;
+  --text: #e6eef8;
+  --muted: #8c9bb0;
+  --faint: #56637a;
+  --ink-rgb: 5 8 12;
+  --ink-2-rgb: 14 19 27;
+  --surface-rgb: 30 39 54;
+  --surface-2-rgb: 40 52 72;
+  --surface-3-rgb: 44 66 104;
+  --rim-rgb: 190 215 255;
+  --glass-strong: rgb(26 33 46 / 0.86);
+  --raised: rgb(52 68 94 / 0.7);
+  --glow-1: 46 98 190;
+  --glow-2: 58 52 110;
+  --glow-3: 70 150 220;
+  --glow-4: 60 110 160;
+  --light-rgb: 190 220 255;
+  --accent-rgb: 110 176 245;
+  --grad-a: #7cc0ff;
+  --grad-b: #5b8def;
+  --grad-b-rgb: 91 141 239;
+  --on-accent: #0b1626;
+  --warn-bg: rgb(40 70 120 / 0.4);
+}
+:root[data-theme="green"] {
+  --bg: #0c130f;
+  --text: #e6f3ea;
+  --muted: #8aa595;
+  --faint: #557062;
+  --ink-rgb: 5 10 7;
+  --ink-2-rgb: 13 22 17;
+  --surface-rgb: 28 44 36;
+  --surface-2-rgb: 38 58 47;
+  --surface-3-rgb: 44 84 62;
+  --rim-rgb: 195 240 210;
+  --glass-strong: rgb(24 37 30 / 0.86);
+  --raised: rgb(50 76 62 / 0.7);
+  --glow-1: 40 140 90;
+  --glow-2: 30 80 90;
+  --glow-3: 90 180 110;
+  --glow-4: 60 130 120;
+  --light-rgb: 200 245 215;
+  --accent-rgb: 110 214 150;
+  --grad-a: #86e3a6;
+  --grad-b: #3fb98a;
+  --grad-b-rgb: 63 185 138;
+  --on-accent: #0a2015;
+  --warn-bg: rgb(40 100 70 / 0.4);
+}
+/* "White": a neutral monochrome look (still a dark interface) with a white-to-silver gradient. */
+:root[data-theme="white"] {
+  --bg: #111214;
+  --text: #f2f3f5;
+  --muted: #a0a4ab;
+  --faint: #666a72;
+  --ink-rgb: 6 6 8;
+  --ink-2-rgb: 18 19 22;
+  --surface-rgb: 40 42 47;
+  --surface-2-rgb: 54 56 62;
+  --surface-3-rgb: 76 79 88;
+  --rim-rgb: 230 235 245;
+  --glass-strong: rgb(34 36 40 / 0.86);
+  --raised: rgb(70 73 80 / 0.7);
+  --glow-1: 150 155 170;
+  --glow-2: 70 74 90;
+  --glow-3: 200 205 215;
+  --glow-4: 110 115 130;
+  --light-rgb: 235 240 255;
+  --accent-rgb: 236 238 242;
+  --grad-a: #ffffff;
+  --grad-b: #c9ced8;
+  --grad-b-rgb: 201 206 216;
+  --on-accent: #16181c;
+  --warn-bg: rgb(90 94 104 / 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  /* body stays transparent: its background would paint over the ::before backdrop */
+  color: var(--text);
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Backdrop: a pure color study. Warm glows in the dark + a soft centered light. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
+}
+body::before {
+  background:
+    radial-gradient(60vmax 60vmax at 5% 5%, rgb(var(--glow-1) / 0.38) 0%, transparent 55%),
+    radial-gradient(55vmax 55vmax at 98% 15%, rgb(var(--glow-2) / 0.55) 0%, transparent 55%),
+    radial-gradient(60vmax 60vmax at 95% 98%, rgb(var(--glow-3) / 0.28) 0%, transparent 55%),
+    radial-gradient(55vmax 55vmax at 2% 95%, rgb(var(--glow-4) / 0.3) 0%, transparent 55%),
+    var(--bg);
+  filter: blur(24px);
+  animation: drift 40s ease-in-out infinite alternate;
+}
+body::after {
+  /* the soft central light, warm rather than white */
+  background: radial-gradient(42vmin 42vmin at 50% 44%, rgb(var(--light-rgb) / 0.1) 0%, rgb(var(--light-rgb) / 0.04) 50%, transparent 100%);
+}
+@keyframes drift {
+  to {
+    transform: translate3d(2%, -1.5%, 0) scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  .orb {
+    animation: none;
+  }
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: var(--accent);
+  text-decoration-color: rgb(var(--accent-rgb) / 0.35);
+  text-underline-offset: 3px;
+}
+img {
+  display: block;
+}
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+::selection {
+  background: rgb(var(--accent-rgb) / 0.35);
+}
+
+/* ---------- cursors: no I-beam/caret on static text, still selectable ---------- */
+body {
+  cursor: default;
+  caret-color: transparent;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  cursor: text;
+  caret-color: var(--accent);
+}
+button,
+a,
+select,
+summary,
+label[for],
+input[type="range"] {
+  cursor: pointer;
+}
+button:disabled,
+input:disabled {
+  cursor: default;
+}
+
+/* ---------- utilities ---------- */
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+.center {
+  text-align: center;
+}
+.pad {
+  padding: 2rem 1rem;
+}
+.break {
+  word-break: break-all;
+}
+.error {
+  color: var(--danger);
+}
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+.link.inline {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--accent-rgb) / 0.35);
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
+.now,
+.host-seek,
+.song,
+.banner,
+.tabs,
+.mode-chip,
+.toast,
+.embed-note {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow);
+}
+
+/* The logo: a softly glowing warm orb */
+.orb {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, rgb(var(--light-rgb) / 0.9) 0%, rgb(var(--light-rgb) / 0) 42%),
+    conic-gradient(from 210deg, var(--ember), var(--amber), var(--grad-a), var(--rose), var(--plum), var(--ember));
+  box-shadow:
+    0 0 70px 6px rgb(var(--glow-3) / 0.28),
+    0 20px 50px -12px rgb(0 0 0 / 0.7);
+  animation: breathe 6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    transform: scale(1.04);
+    box-shadow:
+      0 0 90px 12px rgb(var(--glow-3) / 0.36),
+      0 20px 50px -12px rgb(0 0 0 / 0.7);
+  }
+}
+
