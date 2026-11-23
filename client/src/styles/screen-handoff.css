@@ -94,6 +94,12 @@
   opacity: 0;
   pointer-events: none;
 }
+.fs-next {
+  font-size: 0.95em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .fs-scrub {
   font-size: 0.95em;
 }

@@ -454,7 +454,7 @@ export default function ScreenPlayer({
               <div className="intro-title">{current.title}</div>
             </div>
           )}
-          {big && upNext[0] && !(fsBar && uiVisible) && (
+          {big && upNext[0] && !fsBar && (
             <div className="next-ticker">
               Up next: <b>{upNext[0].singerName}</b> · {upNext[0].title}
             </div>
@@ -466,6 +466,7 @@ export default function ScreenPlayer({
           {fsBar && controls && (
             <FullControls
               c={controls}
+              next={upNext[0]}
               time={time}
               duration={duration}
               visible={uiVisible}
@@ -509,6 +510,7 @@ export default function ScreenPlayer({
 /** Fullscreen toolbar: seek bar on top, transport buttons below (YouTube-style). */
 function FullControls({
   c,
+  next,
   time,
   duration,
   visible,
@@ -517,6 +519,7 @@ function FullControls({
   onExit,
 }: {
   c: PlayerControls;
+  next?: QueueItem; // the song after this one
   time: number;
   duration: number;
   visible: boolean;
@@ -527,6 +530,11 @@ function FullControls({
   const backEnabled = c.canControl && (c.canGoBack || time >= RESTART_AFTER);
   return (
     <div className={`fs-controls ${visible ? "" : "faded"}`} onPointerDown={onActivity} onPointerMove={onActivity}>
+      {next && (
+        <div className="fs-next">
+          Up next: <b>{next.singerName}</b> · {next.title}
+        </div>
+      )}
       <Scrubber className="fs-scrub" time={time} duration={duration} onSeek={onSeek} onActivity={onActivity} readOnly={!c.canControl} />
       <div className="fs-row">
         <button
