@@ -91,6 +91,10 @@ export function setSearchBackend(next?: SearchBackend, now?: () => number) {
   clock = now ?? Date.now;
   cache.clear();
   embedCache.clear();
+  suggestCache.clear();
+  fetchLog.length = 0;
+  backoffUntil = 0;
+  Object.assign(searchLimits, defaultLimits());
 }
 
 // ---------- the search cache ----------
@@ -102,13 +106,47 @@ export const MAX_PAGE_SIZE = 100;
 const MAX_VIDEOS = 500; // per search; relevance falls off long before this
 const MAX_PAGES = 25; // YouTube pages (about 20 videos each) per search
 const TTL = 6 * 3600e3; // since the entry was last used
-const MAX_QUERIES = 1000;
+const MAX_QUERIES = 300; // enough for a party of 50 over the cache's whole life
 const SWEEP_EVERY = 10 * 60e3;
+const FAILURE_PAUSE = 5000; // after YouTube fails, leave it alone for a moment
+
+/** What protects YouTube (and the home connection) from being asked too much. Tests change these. */
+const defaultLimits = () => ({
+  budgetPerMin: Number(process.env.KARAOKE_YT_BUDGET_PER_MIN) || 40, // YouTube page fetches a minute, all guests together
+  maxFetchesPerRequest: 8, // one request (a page jump) may fetch at most this many YouTube pages
+  embedConcurrency: 5, // oEmbed checks in flight at once
+  prefetchBelow: 0.5, // look one page ahead only while less than this share of the budget is used
+});
+export const searchLimits = defaultLimits();
+
+const fetchLog: number[] = []; // when each YouTube page was fetched, within the last minute
+let backoffUntil = 0;
+
+/** YouTube is being asked too much (or just failed): answer "busy" instead of asking again. */
+export class SearchBusyError extends Error {
+  constructor() {
+    super("Search is busy, try again in a moment.");
+  }
+}
+
+/** Takes one YouTube page fetch from the shared budget; false when none is left or YouTube just failed. */
+function takeBudget(maxShare = 1): boolean {
+  const now = clock();
+  while (fetchLog.length && now - fetchLog[0]! > 60e3) fetchLog.shift();
+  if (now < backoffUntil) return false;
+  if (fetchLog.length >= searchLimits.budgetPerMin * maxShare) return false;
+  fetchLog.push(now);
+  return true;
+}
+const failed = () => {
+  backoffUntil = clock() + FAILURE_PAUSE;
+};
 
 interface Entry {
   id: string; // the version: a new entry gets a new one
   at: number; // last used
-  videos: VideoResult[];
+  videos: VideoResult[]; // embeddable is filled in, in order, for the first `checked` of them
+  checked: number;
   ids: Set<string>;
   feed: SearchFeed | null; // the last page fetched, which knows how to get the next one
   pages: number;
@@ -124,18 +162,24 @@ const canFetch = (e: Entry) => !e.done && e.pages < MAX_PAGES && e.videos.length
 export function sweepSearchCache() {
   const now = clock();
   for (const [key, e] of cache) if (now - e.at > TTL) cache.delete(key);
+  for (const [key, s] of suggestCache) if (now - s.at > SUGGEST_TTL) suggestCache.delete(key);
 }
 setInterval(sweepSearchCache, SWEEP_EVERY).unref();
 
 export const searchCacheSize = () => cache.size;
 
-async function toResults(raw: RawVideo[], e: Entry): Promise<VideoResult[]> {
-  const fresh = raw
-    .filter((v) => !e.ids.has(v.videoId))
-    .map((v) => ({ ...v, thumb: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` }));
-  const flags = await Promise.all(fresh.map((v) => isEmbeddable(v.videoId)));
+function toResults(raw: RawVideo[], e: Entry): VideoResult[] {
+  const fresh = raw.filter((v) => !e.ids.has(v.videoId)).map((v) => ({ ...v, thumb: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` }));
   fresh.forEach((v) => e.ids.add(v.videoId));
-  return fresh.map((v, i) => ({ ...v, embeddable: flags[i] }));
+  return fresh;
+}
+
+/** Decides, in order, whether the next few videos can be embedded (a few at a time, never all at once). */
+async function checkNext(e: Entry): Promise<void> {
+  const batch = e.videos.slice(e.checked, e.checked + searchLimits.embedConcurrency);
+  const flags = await Promise.all(batch.map((v) => isEmbeddable(v.videoId)));
+  batch.forEach((v, i) => (v.embeddable = flags[i]));
+  e.checked += batch.length;
 }
 
 /** Fetches the next page of YouTube results into the entry. */
@@ -144,7 +188,7 @@ async function fetchMore(e: Entry, q: string): Promise<void> {
     const query = /karaoke/i.test(q) ? q : `${q} karaoke`;
     const attempt = async () => {
       const feed = await backend.search(query);
-      return { feed, videos: await toResults(feed.videos, e) };
+      return { feed, videos: toResults(feed.videos, e) };
     };
     let { feed, videos } = await attempt();
     if (videos.length === 0) {
@@ -162,7 +206,7 @@ async function fetchMore(e: Entry, q: string): Promise<void> {
       return;
     }
     const feed = await next();
-    e.videos.push(...(await toResults(feed.videos, e)));
+    e.videos.push(...toResults(feed.videos, e));
     e.feed = feed;
   }
   e.pages++;
@@ -190,57 +234,109 @@ export async function searchVideos(rawQuery: string, rawPage: number, rawPageSiz
   }
   if (!e) {
     if (cache.size >= MAX_QUERIES) cache.delete(cache.keys().next().value!);
-    e = { id: randomUUID(), at: clock(), videos: [], ids: new Set(), feed: null, pages: 0, done: false, lock: Promise.resolve() };
+    e = { id: randomUUID(), at: clock(), videos: [], checked: 0, ids: new Set(), feed: null, pages: 0, done: false, lock: Promise.resolve() };
   }
   e.at = clock();
   cache.delete(key); // re-insert: the map stays ordered by last use
   cache.set(key, e);
 
   const entry = e;
-  const pool = () => (playableOnly ? entry.videos.filter((v) => v.embeddable !== false) : entry.videos);
   const need = (wanted + 1) * pageSize;
+  let busy = false;
 
-  // Fetch further pages until we have enough (one fetcher at a time per query).
+  // Fetch (and check) further videos until we have enough (one fetcher at a time per query).
   const run = entry.lock.then(async () => {
-    while (pool().length < need && canFetch(entry)) {
-      try {
-        await fetchMore(entry, q);
-      } catch (err) {
-        if (entry.pages === 0) throw err; // the first page failing is the caller's problem
-        console.warn("search continuation failed:", (err as Error).message);
-        entry.done = true;
-      }
-    }
+    busy = await fill(entry, q, need, playableOnly, 1, searchLimits.maxFetchesPerRequest);
   });
   entry.lock = run.catch(() => {});
   try {
     await run;
   } catch (err) {
     backend.resetSession?.(); // force a fresh session next time
+    failed();
     if (cache.get(key) === entry) cache.delete(key);
     throw err;
   }
   if (entry.videos.length === 0 && cache.get(key) === entry) cache.delete(key); // never cache an empty answer
+  if (busy && entry.videos.length === 0) throw new SearchBusyError();
 
-  const all = pool();
+  const all = poolOf(entry, playableOnly);
   const lastPage = Math.max(0, Math.ceil(all.length / pageSize) - 1);
   const page = Math.min(wanted, lastPage);
   const end = (page + 1) * pageSize;
+  if (all.length >= need) prefetch(entry, q, (wanted + 2) * pageSize, playableOnly); // the page after this one, for the Next button
   return {
     results: all.slice(page * pageSize, end).map((v) => (playable(v) ? v : { ...v, embeddable: false })),
     page,
     pageSize,
     total: all.length,
     hasMore: all.length > end || canFetch(entry),
-    hidden: entry.videos.length - all.length,
+    hidden: playableOnly ? entry.checked - all.length : 0,
     version: entry.id,
+    ...(busy && all.length < need ? { busy: true } : {}),
   };
 }
+
+/** The results a request can use: when filtering, only the videos already checked, in order. */
+const poolOf = (e: Entry, playableOnly: boolean) => (playableOnly ? e.videos.slice(0, e.checked).filter((v) => v.embeddable !== false) : e.videos);
+
+/**
+ * Grows the entry until `need` results are usable or nothing more can be had. Returns true when it
+ * stopped because the YouTube budget ran out. `share` is how much of the budget this may use
+ * (1 = all of it); `maxFetches` limits the YouTube pages one call may fetch.
+ */
+async function fill(e: Entry, q: string, need: number, playableOnly: boolean, share: number, maxFetches: number): Promise<boolean> {
+  let fetches = 0;
+  while (poolOf(e, playableOnly).length < need) {
+    if (playableOnly && e.checked < e.videos.length) {
+      await checkNext(e);
+      continue;
+    }
+    if (!canFetch(e) || fetches >= maxFetches) return false;
+    if (!takeBudget(share)) return true;
+    fetches++;
+    try {
+      await fetchMore(e, q);
+    } catch (err) {
+      if (e.pages === 0) throw err; // the first page failing is the caller's problem
+      console.warn("search continuation failed:", (err as Error).message);
+      e.done = true;
+      failed();
+    }
+  }
+  return false;
+}
+
+/** Quietly fetches one page ahead after answering, while the shared budget is mostly free. */
+function prefetch(e: Entry, q: string, need: number, playableOnly: boolean) {
+  const run = e.lock.then(async () => {
+    if (poolOf(e, playableOnly).length >= need) return;
+    await fill(e, q, need, playableOnly, searchLimits.prefetchBelow, 2);
+  });
+  e.lock = run.catch(() => {});
+}
+
+/** Resolves when no search is still fetching in the background (for tests). */
+export const searchIdle = async () => {
+  await Promise.all([...cache.values()].map((e) => e.lock));
+};
+
+// Autocomplete runs as people type, so many phones ask for the same few starts: remember the answers.
+const SUGGEST_TTL = 5 * 60e3;
+const MAX_SUGGESTIONS = 500;
+const suggestCache = new Map<string, { at: number; list: Promise<string[]> }>();
 
 export async function suggest(q: string): Promise<string[]> {
   const query = q.trim().slice(0, 80);
   if (!query) return [];
-  return backend.suggest(query);
+  const key = query.toLowerCase();
+  const known = suggestCache.get(key);
+  if (known && clock() - known.at <= SUGGEST_TTL) return known.list;
+  const list = backend.suggest(query);
+  if (suggestCache.size >= MAX_SUGGESTIONS) suggestCache.delete(suggestCache.keys().next().value!);
+  suggestCache.set(key, { at: clock(), list });
+  list.catch(() => suggestCache.delete(key)); // never remember a failure
+  return list;
 }
 
 // ---------- embeddability ----------

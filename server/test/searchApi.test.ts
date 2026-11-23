@@ -44,3 +44,20 @@ describe("GET /api/search", () => {
     assert.ok(stats.searches >= 1);
   });
 });
+
+describe("GET /api/search when YouTube is rationed", () => {
+  it("answers 503 with a plain message instead of calling YouTube again", async () => {
+    const tight = await startServer({ KARAOKE_FAKE_YOUTUBE: "1", KARAOKE_YT_BUDGET_PER_MIN: "1" });
+    try {
+      const ok = await fetch(`${tight.url}/api/search?q=one&page=0&pageSize=10`);
+      assert.equal(ok.status, 200);
+      const busy = await fetch(`${tight.url}/api/search?q=two&page=0&pageSize=10`);
+      assert.equal(busy.status, 503);
+      assert.deepEqual(await busy.json(), { error: "Search is busy, try again in a moment." });
+      const cached = await fetch(`${tight.url}/api/search?q=one&page=0&pageSize=10`);
+      assert.equal(cached.status, 200, "a search already cached still works");
+    } finally {
+      await tight.stop();
+    }
+  });
+});

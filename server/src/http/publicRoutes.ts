@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import type { RoomRegistry } from "../rooms/index.ts";
 import type { PlayLog } from "../playLog.ts";
 import { getShareHost, lanIps } from "../net.ts";
-import { rateLimiter, searchVideos, suggest } from "../search.ts";
+import { SearchBusyError, rateLimiter, searchVideos, suggest } from "../search.ts";
 
 /** The public (no sign-in) HTTP API: rooms, search, QR codes and network info. */
 export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegistry; playLog: PlayLog }) {
@@ -45,6 +45,7 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
       const pageSize = Number(legacy ? req.query.limit : (req.query.pageSize ?? 25));
       res.json((await searchVideos(String(req.query.q ?? ""), page, pageSize, playableOnly)) satisfies SearchPage);
     } catch (err) {
+      if (err instanceof SearchBusyError) return void res.status(503).json({ error: err.message } satisfies ApiError);
       console.error("search failed:", err);
       res.status(502).json({ error: "Search is temporarily unavailable. Try again in a moment." } satisfies ApiError);
     }

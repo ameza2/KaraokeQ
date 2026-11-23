@@ -55,7 +55,7 @@ function Search({
           if (suggestOpenRef.current) setSuggestions((d.suggestions ?? []).slice(0, 6));
         })
         .catch(() => {});
-    }, 200);
+    }, 300); // phones type fast and many ask for the same starts: wait a little longer
     return () => {
       clearTimeout(t);
       ctrl.abort(); // a late response can't reopen the list after submit
