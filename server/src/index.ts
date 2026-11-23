@@ -7,6 +7,7 @@ import { RoomRegistry } from "./rooms/index.ts";
 import { FilePlayLog, dataDir } from "./playLog.ts";
 import { startShareHostWatch } from "./net.ts";
 import { Logger } from "./logger.ts";
+import { Metrics } from "./metrics.ts";
 import { publicRoutes } from "./http/publicRoutes.ts";
 import { errorHandler } from "./http/errors.ts";
 import { staticClient } from "./http/staticClient.ts";
@@ -30,6 +31,17 @@ const io = new Server<ClientToServer, ServerToClient, {}, SocketData>(http, { co
 const playLog = new FilePlayLog(dataDir());
 console.log(`data folder: ${dataDir()} (play log, logs, settings, admin login)`);
 const rooms = new RoomRegistry(io, playLog);
+
+// Performance history for the admin debug page (one sample a minute, 7 days).
+const metrics = new Metrics(dataDir(), () => {
+  const live = rooms.list();
+  return {
+    sockets: io.engine.clientsCount,
+    rooms: live.length,
+    singers: live.reduce((n, r) => n + [...r.singers.values()].filter((s) => !s.screen && s.sockets.size > 0).length, 0),
+  };
+});
+metrics.start();
 
 // ---------- HTTP API ----------
 startShareHostWatch();
