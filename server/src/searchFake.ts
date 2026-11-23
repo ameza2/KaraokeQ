@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { setSearchBackend, type RawVideo, type SearchBackend, type SearchFeed } from "./search.ts";
+import { searchCacheSize, setSearchBackend, type RawVideo, type SearchBackend, type SearchFeed } from "./search.ts";
 
 /**
  * A pretend YouTube for tests and `npm run stress`: no network, deterministic results, and it
@@ -70,10 +70,13 @@ export function createFakeBackend(opts: FakeOptions = {}): SearchBackend & { sta
   };
 }
 
-/** The server's switch: install the fake and expose what it was asked, at /api/_fake-youtube. */
+/** The server's switch: install the fake and expose what it was asked (and the server's memory), at /api/_fake-youtube. */
 export function installFakeYoutube(app: Express) {
   const fake = createFakeBackend({ embedDelayMs: Number(process.env.KARAOKE_FAKE_EMBED_MS) || 0, searchDelayMs: Number(process.env.KARAOKE_FAKE_SEARCH_MS) || 0 });
   setSearchBackend(fake);
-  app.get("/api/_fake-youtube", (_req, res) => void res.json(fake.stats));
+  app.get("/api/_fake-youtube", (_req, res) => {
+    const mem = process.memoryUsage();
+    res.json({ ...fake.stats, cachedSearches: searchCacheSize(), rssMb: Math.round(mem.rss / 1048576), heapMb: Math.round(mem.heapUsed / 1048576) });
+  });
   console.warn("KARAOKE_FAKE_YOUTUBE is on: search results are made up.");
 }

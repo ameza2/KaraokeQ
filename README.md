@@ -59,6 +59,7 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 | `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, performance history, settings and the admin login are kept |
 | `KARAOKE_MAX_ROOMS` | `200` | Rooms the server keeps open at once; creating more answers 503 |
 | `KARAOKE_ROOM_CREATE_PER_MIN` | `20` | Rooms one address may create per minute |
+| `KARAOKE_YT_BUDGET_PER_MIN` | `40` | YouTube result pages the server may fetch per minute, all guests together; past that, new searches answer "busy" while pages already loaded keep working |
 | `KARAOKE_CSP_ENFORCE` | unset (report-only) | Set to `1` to enforce the Content-Security-Policy instead of only reporting violations to the log |
 | `CHROME_PATH` | standard install location | Only for `npm run smoke`: the Chrome executable to drive |
 | `API_URL` | `http://localhost:3001` | Dev only: where Vite proxies the API |
@@ -70,6 +71,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - `npm run build`: production build of the client.
 - `npm test`: server tests (each run starts a real server on a free port).
 - `npm run smoke`: after `npm run build`, drives the built app in Chrome at phone width (needs Chrome installed; set `CHROME_PATH` if it is somewhere unusual).
+- `npm run stress`: pretend phones search, page and type against a server with a made-up YouTube (no network), and report how much reaches it. Takes a few minutes. Start the server yourself with `KARAOKE_FAKE_YOUTUBE=1` to try search without internet.
 
 ### Troubleshooting startup
 - **Phones can't connect:** allow Node.js through Windows Firewall on **private** networks, and make sure the phones are on the same Wi-Fi (not a guest network).
@@ -135,7 +137,9 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - **Skipping the last song** ends it and leaves the room idle until someone queues another.
 
 ### Search
-- YouTube search without an API key. Results are paged (10/25/50/100 per page), and videos that can't be embedded are flagged.
+- YouTube search without an API key. Results are paged (10/25/50/100 per page) and the server sends one page at a time, up to 500 results per search. Videos that can't be embedded are flagged.
+- **Paging:** ‹ Prev and Next move one page; « and » skip three. The label reads "76–100 of 103+": the plus means more can still be fetched. Changing "Per page" keeps the song you were looking at on screen.
+- **Shared cache:** a search is remembered for 6 hours after it was last used, so guests looking for the same song cost YouTube nothing extra. All guests share a budget of YouTube requests (`KARAOKE_YT_BUDGET_PER_MIN`); when it runs out you see "Search is busy" and can still page through what is already loaded.
 - **Autocomplete:**
   - ↓/↑ move through the suggestions (the highlighted one previews in the box) and Enter searches it.
   - The first Esc goes back to what you typed; the second closes the list.
