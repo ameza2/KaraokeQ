@@ -36,6 +36,33 @@ export interface SearchPage {
   hidden: number; // results dropped because they can't play on the current output
 }
 
+// ---------- public HTTP API ----------
+// Response bodies of the routes in server/src/http/publicRoutes.ts. The server checks its
+// replies against these (`satisfies`) and the client reads them, so a change breaks both builds.
+
+/** Any failed API call: a status code and `{error}`. */
+export interface ApiError {
+  error: string;
+}
+/** POST /api/rooms. A room made by a screen gets no host token. */
+export interface CreateRoomResponse {
+  code: string;
+  hostToken?: string;
+}
+/** GET /api/rooms/:code */
+export interface RoomExistsResponse {
+  exists: boolean;
+}
+/** GET /api/suggest */
+export interface SuggestResponse {
+  suggestions: string[];
+}
+/** GET /api/info: how other devices should reach the server. */
+export interface ServerInfo {
+  lanIps: string[];
+  shareHost: string | null; // e.g. 192-168-0-5.nip.io
+}
+
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 export const MODE_LABELS: Record<OutputMode, { name: string; hint: string }> = {
@@ -170,4 +197,85 @@ export interface ServerToClient {
   /** The room was deleted (by the admin). The socket is disconnected right after. */
   "room:closed": (p: { message: string }) => void;
   notice: (n: Notice) => void;
+}
+
+// ---------- admin ----------
+
+export interface AdminSession {
+  authenticated: boolean;
+  username?: string;
+  /** Still on the default password: everything else is locked until it's changed. */
+  mustChangePassword?: boolean;
+  /** Colour preset of the admin pages (also sent before sign-in, for the sign-in form). */
+  adminTheme: ThemeName;
+}
+
+export interface AdminRoomReport {
+  code: string;
+  id: string;
+  createdAt: number;
+  lastActive: number;
+  /** Total songs that have left the stage (the full play log, not just the last 30). */
+  playCount: number;
+  hostId: string | null;
+  hostName: string | null;
+  screenConnected: boolean;
+  /** Hostname the screen page is open at, when one is connected. */
+  screenHost: string | null;
+  /** The YouTube cast, when one is paired. */
+  cast: { name: string; connected: boolean } | null;
+  paused: boolean;
+  settings: RoomSettings;
+  nowPlaying: QueueItem | null;
+  queue: QueueItem[];
+  /** Last 30 played, newest first (same list singers see). */
+  history: QueueItem[];
+  singers: Singer[];
+}
+
+export interface AdminStats {
+  now: number;
+  startedAt: number;
+  uptimeSec: number;
+  node: string;
+  platform: string;
+  pid: number;
+  /** Share of one CPU core used by the server since the previous sample (0-100+). */
+  cpuPercent: number;
+  cpuCores: number;
+  memory: { rss: number; heapUsed: number; heapTotal: number; systemTotal: number; systemFree: number };
+  sockets: number;
+  rooms: number;
+  singersOnline: number;
+  dataDir: string;
+  logBytes: number;
+}
+
+/** One bucket of the performance history (averages, except where noted). */
+export interface MetricPoint {
+  at: number;
+  cpu: number; // % of one core
+  cpuMax: number; // highest sample in the bucket
+  rss: number; // bytes
+  heap: number; // bytes
+  sockets: number; // highest in the bucket
+  rooms: number; // highest in the bucket
+  singers: number; // highest in the bucket
+}
+
+export interface MetricHistory {
+  /** Width of one bucket; a gap wider than this means the server was off. */
+  bucketMs: number;
+  from: number;
+  to: number;
+  points: MetricPoint[];
+  systemMemory: number;
+}
+
+export interface LogLine {
+  at: number;
+  level: "info" | "warn" | "error";
+  /** Room code for room-scoped lines. */
+  room?: string;
+  message: string;
 }
