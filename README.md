@@ -59,7 +59,7 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 | `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, performance history, settings and the admin login are kept |
 | `KARAOKE_MAX_ROOMS` | `200` | Rooms the server keeps open at once; creating more answers 503 |
 | `KARAOKE_ROOM_CREATE_PER_MIN` | `20` | Rooms one address may create per minute |
-| `KARAOKE_YT_BUDGET_PER_MIN` | `40` | YouTube result pages the server may fetch per minute, all guests together; past that, new searches answer "busy" while pages already loaded keep working |
+| `KARAOKE_YT_BUDGET_PER_MIN` | `80` | YouTube result pages the server may fetch per minute, all guests together (one phone may use a quarter of it); past that, new searches answer "busy" while pages already loaded keep working |
 | `KARAOKE_CSP_ENFORCE` | unset (report-only) | Set to `1` to enforce the Content-Security-Policy instead of only reporting violations to the log |
 | `CHROME_PATH` | standard install location | Only for `npm run smoke`: the Chrome executable to drive |
 | `API_URL` | `http://localhost:3001` | Dev only: where Vite proxies the API |
@@ -137,7 +137,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - **Skipping the last song** ends it and leaves the room idle until someone queues another.
 
 ### Search
-- YouTube search without an API key. Results are paged (10/25/50/100 per page) and the server sends one page at a time, up to 500 results per search. Videos that can't be embedded are flagged.
+- YouTube search without an API key. Results are paged (10/25/50/100 per page) and the server sends one page at a time, up to 250 results per search. Videos that can't be embedded are flagged.
 - **Paging:** ‹ Prev and Next move one page; « and » skip three. The label reads "76–100 of 103+": the plus means more can still be fetched. Changing "Per page" keeps the song you were looking at on screen.
 - **Shared cache:** a search is remembered for 6 hours after it was last used, so guests looking for the same song cost YouTube nothing extra. All guests share a budget of YouTube requests (`KARAOKE_YT_BUDGET_PER_MIN`); when it runs out you see "Search is busy" and can still page through what is already loaded.
 - **Autocomplete:**

@@ -104,7 +104,7 @@ try {
   check("the last page has no plus", !endLabel.endsWith("+"), endLabel);
   await press("«");
   await page.waitForFunction(() => !document.querySelector(".pager span")?.textContent.startsWith("Loading"), { timeout: 8000 });
-  check("« goes back three pages from the end", (await label()).startsWith("351"), await label());
+  check("« goes back three pages from the end", parseInt(await label()) === parseInt(endLabel) - 3 * 25, `${await label()} (the end was ${endLabel})`);
   check("a complete list has no plus even when pages follow", !(await label()).endsWith("+"), await label());
 
   await clickText(page, ".tabs button", "Queue");

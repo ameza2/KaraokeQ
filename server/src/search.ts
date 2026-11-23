@@ -103,8 +103,8 @@ export function setSearchBackend(next?: SearchBackend, now?: () => number) {
 // a page is just a slice. Whether a video can be embedded is decided once, when it is added.
 
 export const MAX_PAGE_SIZE = 100;
-const MAX_VIDEOS = 500; // per search; relevance falls off long before this
-const MAX_PAGES = 25; // YouTube pages (about 20 videos each) per search
+const MAX_VIDEOS = 250; // per search; relevance falls off long before this
+const MAX_PAGES = 13; // YouTube pages (about 20 videos each) per search
 const TTL = 6 * 3600e3; // since the entry was last used
 const MAX_QUERIES = 300; // enough for a party of 50 over the cache's whole life
 const SWEEP_EVERY = 10 * 60e3;
@@ -112,14 +112,15 @@ const FAILURE_PAUSE = 5000; // after YouTube fails, leave it alone for a moment
 
 /** What protects YouTube (and the home connection) from being asked too much. Tests change these. */
 const defaultLimits = () => ({
-  budgetPerMin: Number(process.env.KARAOKE_YT_BUDGET_PER_MIN) || 40, // YouTube page fetches a minute, all guests together
+  budgetPerMin: Number(process.env.KARAOKE_YT_BUDGET_PER_MIN) || 80, // YouTube page fetches a minute, all guests together
   maxFetchesPerRequest: 8, // one request (a page jump) may fetch at most this many YouTube pages
   embedConcurrency: 5, // oEmbed checks in flight at once
   prefetchBelow: 0.5, // look one page ahead only while less than this share of the budget is used
+  perPhoneShare: 0.25, // one phone's searches may use at most this share of the budget a minute
 });
 export const searchLimits = defaultLimits();
 
-const fetchLog: number[] = []; // when each YouTube page was fetched, within the last minute
+const fetchLog: { at: number; who?: string }[] = []; // each YouTube page fetched in the last minute, and for whom
 let backoffUntil = 0;
 
 /** YouTube is being asked too much (or just failed): answer "busy" instead of asking again. */
@@ -129,13 +130,20 @@ export class SearchBusyError extends Error {
   }
 }
 
-/** Takes one YouTube page fetch from the shared budget; false when none is left or YouTube just failed. */
-function takeBudget(maxShare = 1): boolean {
+/**
+ * Takes one YouTube page fetch from the shared budget; false when none is left, when YouTube just
+ * failed, or when this phone (`who`) has already used its share of the minute.
+ */
+function takeBudget(maxShare = 1, who?: string): boolean {
   const now = clock();
-  while (fetchLog.length && now - fetchLog[0]! > 60e3) fetchLog.shift();
+  while (fetchLog.length && now - fetchLog[0]!.at > 60e3) fetchLog.shift();
   if (now < backoffUntil) return false;
   if (fetchLog.length >= searchLimits.budgetPerMin * maxShare) return false;
-  fetchLog.push(now);
+  if (who !== undefined) {
+    const mine = fetchLog.reduce((n, f) => (f.who === who ? n + 1 : n), 0);
+    if (mine >= Math.max(2, Math.ceil(searchLimits.budgetPerMin * searchLimits.perPhoneShare))) return false;
+  }
+  fetchLog.push({ at: now, who });
   return true;
 }
 const failed = () => {
@@ -218,9 +226,10 @@ const playable = (v: VideoResult) => v.embeddable !== false && embedCache.get(v.
 /**
  * One page of results: `page` (0-based) of `pageSize`. With `playableOnly`, videos that can't be
  * embedded are left out and more YouTube pages are fetched to make up for them. A page past the
- * end gives the last page that exists (see `page` in the reply).
+ * end gives the last page that exists (see `page` in the reply). `who` (the phone asking) limits how
+ * much of the shared YouTube budget these searches may use, so one guest can't take it all.
  */
-export async function searchVideos(rawQuery: string, rawPage: number, rawPageSize: number, playableOnly: boolean): Promise<SearchPage> {
+export async function searchVideos(rawQuery: string, rawPage: number, rawPageSize: number, playableOnly: boolean, who?: string): Promise<SearchPage> {
   const q = rawQuery.trim().replace(/\s+/g, " ").slice(0, 120);
   const pageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(rawPageSize) || 25));
   const wanted = Math.max(0, Math.floor(rawPage) || 0);
@@ -246,7 +255,7 @@ export async function searchVideos(rawQuery: string, rawPage: number, rawPageSiz
 
   // Fetch (and check) further videos until we have enough (one fetcher at a time per query).
   const run = entry.lock.then(async () => {
-    busy = await fill(entry, q, need, playableOnly, 1, searchLimits.maxFetchesPerRequest);
+    busy = await fill(entry, q, need, playableOnly, 1, searchLimits.maxFetchesPerRequest, who);
   });
   entry.lock = run.catch(() => {});
   try {
@@ -264,7 +273,7 @@ export async function searchVideos(rawQuery: string, rawPage: number, rawPageSiz
   const lastPage = Math.max(0, Math.ceil(all.length / pageSize) - 1);
   const page = Math.min(wanted, lastPage);
   const end = (page + 1) * pageSize;
-  if (all.length >= need) prefetch(entry, q, (wanted + 2) * pageSize, playableOnly); // the page after this one, for the Next button
+  if (all.length >= need) prefetch(entry, q, (wanted + 2) * pageSize, playableOnly, who); // the page after this one, for the Next button
   return {
     results: all.slice(page * pageSize, end).map((v) => (playable(v) ? v : { ...v, embeddable: false })),
     page,
@@ -286,7 +295,7 @@ const poolOf = (e: Entry, playableOnly: boolean) => (playableOnly ? e.videos.sli
  * stopped because the YouTube budget ran out. `share` is how much of the budget this may use
  * (1 = all of it); `maxFetches` limits the YouTube pages one call may fetch.
  */
-async function fill(e: Entry, q: string, need: number, playableOnly: boolean, share: number, maxFetches: number): Promise<boolean> {
+async function fill(e: Entry, q: string, need: number, playableOnly: boolean, share: number, maxFetches: number, who?: string): Promise<boolean> {
   let fetches = 0;
   while (poolOf(e, playableOnly).length < need) {
     if (playableOnly && e.checked < e.videos.length) {
@@ -294,7 +303,7 @@ async function fill(e: Entry, q: string, need: number, playableOnly: boolean, sh
       continue;
     }
     if (!canFetch(e) || fetches >= maxFetches) return false;
-    if (!takeBudget(share)) return true;
+    if (!takeBudget(share, who)) return true;
     fetches++;
     try {
       await fetchMore(e, q);
@@ -309,10 +318,10 @@ async function fill(e: Entry, q: string, need: number, playableOnly: boolean, sh
 }
 
 /** Quietly fetches one page ahead after answering, while the shared budget is mostly free. */
-function prefetch(e: Entry, q: string, need: number, playableOnly: boolean) {
+function prefetch(e: Entry, q: string, need: number, playableOnly: boolean, who?: string) {
   const run = e.lock.then(async () => {
     if (poolOf(e, playableOnly).length >= need) return;
-    await fill(e, q, need, playableOnly, searchLimits.prefetchBelow, 2);
+    await fill(e, q, need, playableOnly, searchLimits.prefetchBelow, 2, who);
   });
   e.lock = run.catch(() => {});
 }

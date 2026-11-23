@@ -61,12 +61,12 @@ describe("paged search", () => {
     assert.equal(earlier.complete, true, "but the list is complete, so the total is exact");
   });
 
-  it("stops at 500 videos however long YouTube goes on", async () => {
+  it("stops at 250 videos however long YouTube goes on", async () => {
     let r = await searchVideos("endless", 0, 100, false);
     for (let i = 0; i < 20 && r.hasMore; i++) r = await searchVideos("endless", r.page + 3, 100, false); // keep jumping on
-    assert.ok(r.total >= 500 && r.total <= 520, `total ${r.total}`);
+    assert.ok(r.total >= 250 && r.total <= 270, `total ${r.total}`);
     assert.equal(r.hasMore, false);
-    assert.ok(r.page <= 5);
+    assert.ok(r.page <= 2);
   });
 
   it("answers an empty search with an empty page and does not call YouTube", async () => {
@@ -201,6 +201,30 @@ describe("protecting YouTube", () => {
     await assert.rejects(searchVideos("other", 0, 10, false), SearchBusyError);
     now += 61e3;
     assert.equal((await searchVideos("other", 0, 10, false)).results.length, 10);
+  });
+
+  it("one phone can use only its share of the budget, and others still get theirs", async () => {
+    searchLimits.budgetPerMin = 8;
+    searchLimits.perPhoneShare = 0.25; // 2 fetches a minute each
+    const hog = await searchVideos("hog", 9, 10, false, "phone-1"); // wants 10 pages
+    assert.equal(hog.busy, true);
+    assert.equal(fake.stats.searches + fake.stats.continuations, 2, "the hog stopped at its share");
+    await assert.rejects(searchVideos("hog two", 0, 10, false, "phone-1"), SearchBusyError, "a new search from the hog is refused");
+    const other = await searchVideos("other", 0, 10, false, "phone-2");
+    assert.equal(other.results.length, 10, "another phone is not affected");
+    assert.equal((await searchVideos("hog", 0, 10, false, "phone-1")).results.length, 10, "the hog still sees pages already loaded");
+  });
+
+  it("the share is counted over a minute and a cached search costs nothing", async () => {
+    searchLimits.budgetPerMin = 8;
+    searchLimits.perPhoneShare = 0.25;
+    await searchVideos("song", 0, 10, false, "a");
+    await searchVideos("song", 0, 10, false, "b"); // cached: free for b
+    assert.equal(fake.stats.searches, 1);
+    await searchVideos("song", 9, 10, false, "a"); // a uses its second fetch, then runs out
+    await assert.rejects(searchVideos("fresh", 0, 10, false, "a"), SearchBusyError);
+    now += 61e3;
+    assert.equal((await searchVideos("fresh", 0, 10, false, "a")).results.length, 10);
   });
 
   it("one request fetches at most a few YouTube pages, however far it jumps", async () => {

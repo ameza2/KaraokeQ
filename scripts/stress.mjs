@@ -4,13 +4,14 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SECONDS = Number(process.env.STRESS_SECONDS) || 60;
-const BUDGET = Number(process.env.KARAOKE_YT_BUDGET_PER_MIN) || 40;
+const BUDGET = Number(process.env.KARAOKE_YT_BUDGET_PER_MIN) || 80;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // a small seeded random generator, so two runs behave alike
@@ -26,9 +27,17 @@ const between = (a, b) => a + rand() * (b - a);
 
 const POPULAR = ["bohemian rhapsody", "dont stop believin", "sweet caroline", "livin on a prayer", "mr brightside", "wonderwall", "i will survive", "shallow"];
 
+const freePort = () =>
+  new Promise((resolve, reject) => {
+    const probe = net.createServer().once("error", reject).listen(0, () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+
 // ---------- a server per phase, so the shared budget starts full each time ----------
 async function startServer(env = {}) {
-  const port = 4100 + Math.floor(rand() * 800);
+  const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), "karaoke-stress-"));
   const child = spawn(process.execPath, ["--import", "tsx", "src/index.ts"], {
     cwd: path.join(repo, "server"),
@@ -78,6 +87,7 @@ async function fakeStats(port) {
 async function searchOnce(port, n, tally, q, opts = {}) {
   const ip = phoneIp(n);
   const size = opts.size ?? pick([10, 25, 25, 25, 50]);
+  if (opts.fast) await sleep(between(0, 400)); // phones never tap at the same instant, and the first one pays for the fetch
   for (const len of [3, 6, q.length]) if (q.length >= len) { // autocomplete while typing
     record(tally, "suggest", await get(port, ip, `/api/suggest?q=${encodeURIComponent(q.slice(0, len))}`));
     await sleep(opts.fast ? 20 : 300);
@@ -135,12 +145,15 @@ const findings = [];
 {
   const s = await startServer();
   const tally = newTally();
-  const until = Date.now() + SECONDS * 1000;
+  const started = Date.now();
+  const until = started + SECONDS * 1000;
   await Promise.all(Array.from({ length: 50 }, (_, n) => phone(s.port, n + 1, tally, until, [15000, 45000])));
+  const elapsed = (Date.now() - started) / 1000; // searches still running at the end make this a little over SECONDS
   const stats = await fakeStats(s.port);
   const r = report("a normal party: 50 phones, a search every 15-45 s", tally, stats, SECONDS);
-  const minutes = Math.ceil(SECONDS / 60);
-  check("steady: YouTube page fetches stay within the shared budget", r.fetches <= BUDGET * minutes + 2, `${r.fetches} <= ${BUDGET * minutes + 2}`);
+  // The budget is a sliding minute, so a run of T seconds may use up to BUDGET for each started minute.
+  const allowed = BUDGET * Math.ceil(elapsed / 60);
+  check("steady: YouTube page fetches stay within the shared budget", r.fetches <= allowed, `${r.fetches} <= ${allowed} (${elapsed.toFixed(0)} s)`);
   check("steady: no search failed outright", r.failed === 0, `${r.failed} failed`);
   check("steady: cached pages answer quickly (median under 400 ms)", pct(r.lat, 50) < 400, `${fmt(pct(r.lat, 50))} ms`);
   check("steady: memory stays reasonable (under 300 MB)", stats.rssMb < 300, `${stats.rssMb} MB`);
@@ -204,7 +217,7 @@ const findings = [];
     await sleep(3000);
     while (Date.now() < until) {
       record(bystander, "search", await get(s.port, phoneIp(2), `/api/search?q=${encodeURIComponent("quiet song " + i++)}&page=0&pageSize=25`));
-      await sleep(2500);
+      await sleep(8000); // a guest, not a bot: the share is per phone, so a phone searching every few seconds would hit its own
     }
   })();
   await Promise.all([mash, watcher]);
@@ -216,7 +229,7 @@ const findings = [];
   console.log(`  the other phone: ${ok} of ${bys.length} searches answered normally, ${bys.length - ok} busy`);
   check("mashing: the other phone always gets an answer (never hangs or errors)", answered.length === bys.length, `${answered.length}/${bys.length}`);
   check("mashing: YouTube fetches stay within the budget", stats.searches + stats.continuations <= BUDGET + 2, `${stats.searches + stats.continuations} <= ${BUDGET + 2}`);
-  if (ok < bys.length) findings.push(`One phone mashing » made ${bys.length - ok} of ${bys.length} searches from another phone answer "busy" (the budget is shared by everyone). A per-phone share of the budget would stop one guest taking it all.`);
+  check("mashing: one phone can't make another see 'busy' (each phone has its own share)", ok === bys.length, `${ok}/${bys.length} answered normally`);
   s.stop();
 }
 
