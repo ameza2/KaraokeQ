@@ -41,6 +41,16 @@
   align-items: center;
   margin: 1.2rem 0;
 }
+.search .pager {
+  gap: 0.4rem;
+}
+.search .pager .muted {
+  flex: 1;
+  text-align: center;
+}
+.search .pager .btn.jump {
+  padding-inline: 0.75rem;
+}
 .history-pager {
   margin: 0.2rem 0;
   gap: 0.6rem;

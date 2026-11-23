@@ -224,7 +224,7 @@ export async function searchVideos(rawQuery: string, rawPage: number, rawPageSiz
   const q = rawQuery.trim().replace(/\s+/g, " ").slice(0, 120);
   const pageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(rawPageSize) || 25));
   const wanted = Math.max(0, Math.floor(rawPage) || 0);
-  if (!q) return { results: [], page: 0, pageSize, total: 0, hasMore: false, hidden: 0, version: "" };
+  if (!q) return { results: [], page: 0, pageSize, total: 0, complete: true, hasMore: false, hidden: 0, version: "" };
 
   const key = q.toLowerCase();
   let e = cache.get(key);
@@ -270,6 +270,7 @@ export async function searchVideos(rawQuery: string, rawPage: number, rawPageSiz
     page,
     pageSize,
     total: all.length,
+    complete: !canFetch(entry),
     hasMore: all.length > end || canFetch(entry),
     hidden: playableOnly ? entry.checked - all.length : 0,
     version: entry.id,

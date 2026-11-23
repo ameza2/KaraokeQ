@@ -82,6 +82,31 @@ try {
   await page.select(".page-size select", "25");
   await waitLabel("1–25");
   await shot(page, "03a-search");
+  // page jumping: « and » move 3 pages, and » stops at the end
+  const press = (symbol) => page.evaluate((s) => [...document.querySelectorAll(".pager button")].find((b) => b.textContent.trim() === s)?.click(), symbol);
+  await press("»");
+  await waitLabel("76");
+  check("» jumps three pages ahead", (await label()).startsWith("76–100"), await label());
+  await shot(page, "03b-jumped");
+  check("no horizontal overflow (search pager)", (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 0);
+  await press("«");
+  await waitLabel("1–25");
+  check("« jumps back to the start", (await titles()).join() === page1.join());
+  let jumps = 0;
+  while (jumps < 12 && !(await page.$eval(".pager button[aria-label^=Forward]", (b) => b.disabled))) {
+    const before = await label();
+    await press("»");
+    await page.waitForFunction((b) => document.querySelector(".pager span")?.textContent !== b && !document.querySelector(".pager span")?.textContent.startsWith("Loading"), { timeout: 8000 }, before);
+    jumps++;
+  }
+  const endLabel = await label();
+  check("» stops at the end of the results", await page.$eval(".pager button[aria-label^=Forward]", (b) => b.disabled), `${jumps} jumps, ${endLabel}`);
+  check("the last page has no plus", !endLabel.endsWith("+"), endLabel);
+  await press("«");
+  await page.waitForFunction(() => !document.querySelector(".pager span")?.textContent.startsWith("Loading"), { timeout: 8000 });
+  check("« goes back three pages from the end", (await label()).startsWith("351"), await label());
+  check("a complete list has no plus even when pages follow", !(await label()).endsWith("+"), await label());
+
   await clickText(page, ".tabs button", "Queue");
   await sleep(300);
   await shot(page, "03-queue");

@@ -28,6 +28,7 @@ describe("paged search", () => {
     assert.equal(a.page, 0);
     assert.equal(c.page, 2);
     assert.ok(c.hasMore);
+    assert.equal(c.complete, false, "YouTube has more, so the total can still grow");
   });
 
   it("a different page size is just a different slice of the same list", async () => {
@@ -53,7 +54,11 @@ describe("paged search", () => {
     assert.equal(r.page, 3);
     assert.equal(r.total, 40);
     assert.equal(r.hasMore, false);
+    assert.equal(r.complete, true);
     assert.equal(r.results.length, 10);
+    const earlier = await searchVideos("short", 0, 10, false);
+    assert.equal(earlier.hasMore, true, "pages follow");
+    assert.equal(earlier.complete, true, "but the list is complete, so the total is exact");
   });
 
   it("stops at 500 videos however long YouTube goes on", async () => {

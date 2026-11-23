@@ -36,10 +36,14 @@ export interface SearchPage {
   page: number;
   pageSize: number;
   total: number; // results known so far for this search (all pages, after filtering)
-  hasMore: boolean;
+  /** true = YouTube has nothing more for this search, so total is exact; false = more can still be fetched. */
+  complete: boolean;
+  hasMore: boolean; // there is a page after this one
   hidden: number; // results dropped because they can't play on the current output
   /** Changes when the server rebuilds this search; paging across versions would mix two result lists. */
   version: string;
+  /** The server is rationing YouTube requests: this is the furthest page ready for now; try Next again shortly. */
+  busy?: boolean;
 }
 
 // ---------- public HTTP API ----------

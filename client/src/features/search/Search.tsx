@@ -2,6 +2,8 @@ import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 import { MODE_LABELS, PAGE_SIZES, type ApiError, type OutputMode, type SearchPage, type SuggestResponse, type VideoResult } from "@karaoke/shared";
 import { load, save } from "../../lib/storage.ts";
 
+const JUMP = 3; // « and » skip this many pages (the server fetches that far ahead, no further)
+
 function initialPageSize(): number {
   const n = Number(load("karaoke:pageSize"));
   return (PAGE_SIZES as readonly number[]).includes(n) ? n : 25;
@@ -124,7 +126,8 @@ function Search({
         }
         version.current = body.version;
         pages.current.set(body.page, body);
-        setNote(body.busy ? "Search is busy. This is the furthest page ready; try Next again in a moment." : null);
+        const clamped = body.page < page; // we asked past the end (or past what could be fetched)
+        setNote(body.busy ? "Search is busy. This is the furthest page ready; try Next again in a moment." : clamped ? (body.hasMore ? "This is the furthest page ready. Use Next to keep going." : "That was the last page.") : null);
         setData(body);
         if (body.page !== page) setPage(body.page); // asked for a page past the end: this is the last one
         if (!body.results.length) setErr("No playable results. Try the artist and song name.");
@@ -284,12 +287,18 @@ function Search({
 
       {data && pageItems.length > 0 && (
         <nav className="pager">
+          <button className="btn small jump" disabled={shownPage === 0 || loading} onClick={() => goTo(Math.max(0, shownPage - JUMP))} aria-label={`Back ${JUMP} pages`} title={`Back ${JUMP} pages`}>
+            «
+          </button>
           <button className="btn small" disabled={shownPage === 0 || loading} onClick={() => goTo(shownPage - 1)}>
             ‹ Prev
           </button>
-          <span className="muted small">{loading ? "Loading…" : `${first}–${first + pageItems.length - 1} of ${data.total}${data.hasMore ? "+" : ""}`}</span>
+          <span className="muted small">{loading ? "Loading…" : `${first}–${first + pageItems.length - 1} of ${data.total}${data.complete ? "" : "+"}`}</span>
           <button className="btn small" disabled={!data.hasMore || loading} onClick={() => goTo(shownPage + 1)}>
             Next ›
+          </button>
+          <button className="btn small jump" disabled={!data.hasMore || loading} onClick={() => goTo(shownPage + JUMP)} aria-label={`Forward ${JUMP} pages`} title={`Forward ${JUMP} pages`}>
+            »
           </button>
         </nav>
       )}
