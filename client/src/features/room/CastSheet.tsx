@@ -27,7 +27,7 @@ export function CastSheet({
     if (ok) onClose();
   };
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={onClose} className="cast">
       <h2>Cast to YouTube</h2>
       {cast && casting ? (
         <>
@@ -46,7 +46,7 @@ export function CastSheet({
       ) : (
         <form onSubmit={submit}>
           <ol className="muted small">
-            <li>Open the TV's YouTube app (signed in to the Premium account).</li>
+            <li>Open the YouTube app on the TV. Premium on its account avoids ads.</li>
             <li>Go to Settings → Link with TV code.</li>
             <li>Type the 12-digit code here.</li>
           </ol>

@@ -67,6 +67,20 @@
   text-transform: uppercase;
   color: var(--faint);
 }
+/* the cast sheet is text and a form: read it left-aligned */
+.sheet.cast {
+  align-items: stretch;
+  text-align: left;
+}
+.sheet.cast ol {
+  margin: 0;
+  padding-left: 1.3em;
+}
+.sheet.cast form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
 .sheet.tall {
   max-height: 85dvh;
   align-items: stretch;
