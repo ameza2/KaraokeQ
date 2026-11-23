@@ -4,8 +4,10 @@ import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, ReplacedB
 import type { PlaybackOutput } from "../playback/output.ts";
 import { ScreenOutput } from "../playback/screen.ts";
 import type { LoungeOutput } from "../playback/lounge.ts";
+import type { ScreenInfo } from "../playback/screen.ts";
 import { toPlayRecord, type PlayLog } from "../playLog.ts";
 import { THEMES } from "@karaoke/shared";
+import { EmbedBlockPolicy } from "./embedBlocks.ts";
 
 type IO = Server<ClientToServer, ServerToClient>;
 
@@ -112,6 +114,7 @@ export class Room {
   lastActive = Date.now();
   /** The browser screen output; always present (idle while a YouTube cast is the output). */
   readonly screenOutput: ScreenOutput;
+  private readonly embedBlocks: EmbedBlockPolicy;
   /** The YouTube cast (the TV's YouTube app), when one is paired. */
   lounge: LoungeOutput | null = null;
 
@@ -135,6 +138,7 @@ export class Room {
     readonly code: string,
     private log: PlayLog,
   ) {
+    this.embedBlocks = new EmbedBlockPolicy(this, io);
     this.screenOutput = this.attach(new ScreenOutput(io, code));
     log.openRoom({ roomId: this.id, roomCode: code, createdAt: this.createdAt });
     this.say("room created");
@@ -182,6 +186,12 @@ export class Room {
 
   private attach<T extends PlaybackOutput>(output: T): T {
     output.on("ended", (itemId: string) => {
+      if (this.nowPlaying?.id === itemId) this.advance();
+    });
+    output.on("player-error", (itemId: string, errorCode?: number, screen?: ScreenInfo, played?: boolean) =>
+      this.embedBlocks.handleError(itemId, errorCode, screen, played));
+    // The person at an IP-address screen chose to skip the blocked song.
+    output.on("skip-blocked", (itemId: string) => {
       if (this.nowPlaying?.id === itemId) this.advance();
     });
     return output;
@@ -369,6 +379,7 @@ export class Room {
   }
 
   start(next: QueueItem | null) {
+    this.firstReport = null;
     this.nowPlaying = next;
     this.paused = false;
     this.progress = null;
@@ -395,6 +406,8 @@ export class Room {
    */
   progressAt: number | null = null;
 
+  private firstReport: { itemId: string; time: number } | null = null;
+
   /**
    * A seek the browser screen has been told about: until it reports a position near the target,
    * its older reports (already on the wire) would pull the bar back. The cast has its own guard.
@@ -408,6 +421,14 @@ export class Room {
     const time = Number(p.time), duration = Number(p.duration);
     if (!isFinite(time) || !isFinite(duration)) return;
     if (measured && this.staleAfterSeek(p.itemId, time)) return;
+    if (measured) {
+      // A position alone proves nothing: a screen resuming a song reports the resume point
+      // even if the video never starts. Playback is real once the position has moved on.
+      const first = this.firstReport?.itemId === p.itemId ? this.firstReport : (this.firstReport = { itemId: p.itemId, time });
+      if (time - first.time >= 2) {
+        this.embedBlocks.markPlayed(this.nowPlaying.videoId); // it really played on some screen
+      }
+    }
     this.progress = { itemId: p.itemId, time, duration };
     this.progressAt = this.paused || !this.playbackLive() ? null : Date.now();
     this.io.to(this.channel).emit("playback:progress", this.progress);
