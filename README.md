@@ -197,3 +197,61 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 - **What survives a restart:** the files in `data/`: the play log, log files, performance history, the admin colour preset and the admin password. A room's colour is part of the room, so it's lost with it.
 
 ---
+
+## Why the address is `192-168-x-x.nip.io`
+
+YouTube refuses many videos (music labels especially: "uploader blocked embedding", error 150) when the page is opened by a raw IP address like `http://192.168.0.5:5173`, or by `localhost`. The same videos play when the page is opened by a hostname that points to the same computer. So:
+
+- **Hostname:** at startup the server picks a name that resolves to its LAN IP: `192-168-0-5.nip.io`, or `sslip.io` as a backup.
+  - These are free public DNS services that return the IP written in the name.
+  - Only the private LAN IP is part of the lookup.
+- **Shared links:** QR codes, invite links, the "Open the screen" menu item and the on-screen hints all use that name.
+- **Pages opened by IP or `localhost`** move themselves to the hostname, carrying your name, songs and host status. They only do this if the device can reach the hostname.
+- **A screen still on an IP address or `localhost`:** if YouTube blocks the current video there:
+  - The song is held, not skipped, and the video isn't marked as blocked.
+  - The screen offers **Reopen at <name>** (the song continues there) or **Skip song**.
+  - The host and the singer are told.
+- **A screen that keeps failing:** if the same screen is blocked on two songs in a row with nothing playing in between, the screen is the problem. The song is held and the earlier song isn't marked as blocked.
+- **The uploader really blocked it:** only a block on a hostname page, for a video that hasn't played anywhere else in the room, counts as the uploader's choice. That song is skipped and the singer gets a notice.
+- **If your router blocks those names** (DNS rebind protection) or there's no internet DNS:
+  - Set `KARAOKE_HOST` to a name your network resolves, for example a router DHCP name or `mypc.local`.
+  - Otherwise the app falls back to the IP, and some videos will be held as blocked.
+
+---
+
+## Project layout
+
+```
+shared/   types shared by server and client (socket events, RoomState, QueueItem)
+server/   Express + Socket.IO
+  src/index.ts            wiring: Express, Socket.IO, logging, metrics
+  src/http/               public HTTP API and the built-client fallback
+  src/sockets/            socket handlers by area (room, queue, playback, host, screen)
+  src/rooms/              Room (queue, fair ordering, permissions, playback clock), registry, YouTube cast, embed-block rules
+  src/search.ts           youtubei.js search + suggestions (no API quota), caching, rate limit
+  src/net.ts              LAN IP + shareable hostname (nip.io / sslip.io)
+  src/playLog.ts          play log (PlayLog interface + JSON-lines file store)
+  src/logger.ts           log files: captures console output; system + per-room logs
+  src/siteSettings.ts     admin-page settings (its colour preset)
+  src/metrics.ts          performance history: one sample a minute, 7 days
+  src/admin/              admin login (scrypt credential file) and the /api/admin routes
+  src/playback/           PlaybackOutput interface; ScreenOutput (browser screen); LoungeOutput (YouTube cast)
+  test/                   socket integration tests (npm test)
+client/   React + Vite
+  src/features/           one folder per area: home, screen, room, search, admin
+  src/components/ui/      shared Sheet, Dialog and ToggleItem
+  src/lib/                socket hook, storage, URLs, colour preset (theme.ts)
+  src/styles/             CSS split by area; index.css sets the load order
+data/     runtime files, git-ignored: rooms/ (play log), logs/, metrics/, admin/ (login), settings.json
+```
+
+## Next steps
+
+Planned work:
+1. YouTube cast: more testing on real TVs.
+2. Refactoring and a test suite.
+3. Source control: a remote and branching conventions.
+
+## License
+
+[MIT](LICENSE). This project is not affiliated with or endorsed by YouTube or Google. It uses YouTube's public player and an unofficial search and cast protocol, so follow YouTube's terms of service when you use it.
