@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import Home from "./features/home/Home.tsx";
 import RoomPage from "./features/room/RoomPage.tsx";
+import ScreenLanding from "./features/screen/ScreenLanding.tsx";
 import { adoptCarriedIdentity, moveOffIpAddress } from "./lib/hostRedirect.ts";
 import "./styles/index.css";
 
@@ -15,6 +16,7 @@ void moveOffIpAddress().then((moving) => {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/screen" element={<ScreenLanding />} />
           <Route path="/r/:code" element={<RoomPage />} />
           <Route path="/r/:code/screen" element={<RoomPage screenMode />} />
           <Route path="*" element={<Home />} />
