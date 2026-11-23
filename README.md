@@ -77,3 +77,123 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - **Many videos say "can't be played on this screen":** the page is open by IP or `localhost`. Use the `nip.io` address the server prints (below).
 
 ---
+
+## Using it
+
+### The two landing pages
+- **Default (`/`), for phones:**
+  - **Start a party** (you become the host) or join with a code.
+  - Videos don't play on this device unless the host turns it on (☰ → Play on this device).
+- **Screen (`/screen`), for the TV or a laptop on HDMI:**
+  - **Create a session** or join one by code. The last code is pre-filled but never joined automatically.
+  - Either way, this device becomes the room's **screen**. It plays the videos full screen and shows the QR code while the queue is empty.
+  - Exit full screen (✕ or Esc) to see the room page with all the controls; ⛶ goes back to full screen.
+  - Opening `/r/CODE/screen` directly does the same.
+- **Guests** scan the QR code or tap **Invite** to get the link.
+
+### Full-screen controls (screen)
+- A YouTube-style bar (seek bar, ±10s, ⏮, play/pause, ⏭, exit) fades after 3s without input. Any mouse move, tap or key brings it back, and it stays up while paused.
+- Click the video to pause or resume. On touch, the first tap only shows the bar.
+- **Keys:** Space/K pause, ←/→ or J/L ±10s, Shift+N skip, Shift+P back.
+- **First song:** browsers block autoplay, so the very first song needs one click or tap on the screen.
+
+### Host, screen and permissions
+
+| Who | Can do |
+|---|---|
+| Anyone | Search and queue songs, pause/resume, see the room history, replay a song |
+| The singer | Remove their own songs; skip while they're singing |
+| **Host** | Skip, ⏮, seek, reorder, remove any song, settings, hand host to someone else |
+| **Screen** (superhost) | Everything the host can do. It keeps these powers even after handing host away, and can move host from one person to another |
+
+- **First host:** a room without a host gives host to the first person who joins. The creator's saved link always reclaims it.
+- **Host away:** once the host has been fully disconnected (every device) for 5 minutes, everyone else sees **Claim host**. The first person to tap it becomes host. A host who keeps a phone open keeps the role.
+- **Hand-over:** ☰ → Make someone else host. The old host's saved link stops granting host, the new host stays host after a reload, and whoever loses host is told.
+- **The screen** is whichever device plays the videos: a `/screen` page, or a phone/laptop using Play on this device.
+- **One screen per room:**
+  - Opening the screen somewhere else takes over. The old screen stops and shows "This screen was replaced".
+  - The new one resumes the current song at the same position, and stays paused if the room is paused.
+
+### Menu (☰)
+
+| Section | Items |
+|---|---|
+| **Room** | Room history · Invite singers (QR code and link) · Change your name |
+| **Settings** (host/screen) | **Everyone can control:** off by default; when on, everyone can skip, ⏮, seek, reorder and remove · **Fair queue:** on by default (see below) · **Room colour:** Orange, Blue, White or Green, on every device in the room |
+| **Host & screen** (host/screen) | Make someone else host · Play on this device · Open the screen (always opens the shareable address) |
+
+### Queue rules
+- **Fair queue** (on by default): each singer's Nth song plays after everyone else's Nth song, so people with fewer songs go first. The person singing counts as having used their turn.
+  - Turn it off to play songs in the order they were added.
+  - Switching only affects songs added afterwards.
+- **Limits:** each singer can queue up to 5 songs, and duplicate videos are rejected.
+- **Reordering** (host/screen, or everyone when allowed):
+  - Drag a song by its ⠿ grip (mouse or touch). The list scrolls near the edges.
+  - Or use the ▲/▼ buttons, which suit TV remotes and click-only devices.
+  - Or focus the grip and press ↑/↓.
+- **⏮:** more than 5s into a song it restarts the song. Otherwise it goes back to the previous song and puts the current one back at the front of the queue (one song back only).
+- **Skipping the last song** ends it and leaves the room idle until someone queues another.
+
+### Search
+- YouTube search without an API key. Results are paged (10/25/50/100 per page), and videos that can't be embedded are flagged.
+- **Autocomplete:**
+  - ↓/↑ move through the suggestions (the highlighted one previews in the box) and Enter searches it.
+  - The first Esc goes back to what you typed; the second closes the list.
+
+### History and play log
+- **Room history** (☰): the last 30 songs played, newest first, 10 per page with ‹ › buttons. **Replay** adds a song to the back of the queue, sung by you.
+- **Play log:** every song played in every room is saved, whether finished or skipped:
+  - **Files:** `data/rooms/<date>_<CODE>_<roomId>.jsonl`. The first line describes the room, then one line per song: video, title, singer, and when it was added and played.
+  - **API:** `GET /api/rooms/<CODE>/plays` returns a live room's full list.
+  - **Notes:** a rewound song is logged again when it leaves the stage a second time. A room's file is deleted 30 days after its last song. `data/` is git-ignored and safe to delete.
+
+### Admin area (`/admin`)
+
+Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of the home page).
+
+**Signing in**
+- **First time:** username `Administrator`, password `password`. You must choose a new password (8 characters or more) before anything else is available.
+- **Storage:** the password is never stored. Only a salted scrypt hash is kept, in `data/admin/credentials.json`.
+- **Forgot the password?** Delete `data/admin/credentials.json` on the server. The login goes back to the default, which must be changed again.
+- **Sessions** last 12 hours and end when the server restarts. Sign-in attempts are limited to 8 per minute per address.
+- **Network:** the admin page works from any device on the LAN. The app uses plain HTTP, so only use it on a Wi-Fi network you trust.
+
+**Rooms tab**
+- Every live room with its **running time**, host, people online, queue length and screen status. Refreshes every 3 seconds.
+- **Find a room:** the search box matches the room code, anyone in the room, and song titles (now playing or queued).
+- **Sort** by session length, number of singers, or singers online, in either direction.
+- Open a room for the full report:
+  - Created time, last activity and songs played.
+  - Screen address.
+  - **Settings** as checkboxes you can change from here: Everyone can control, Fair queue, plus the room's colour.
+  - Now playing, **users** (online or offline), the **queue**, and the **queue history**: the last 30 songs, with a button to load every song from the play log.
+- **YouTube cast:** enter the TV's *Settings → Link with TV code* to cast a room to the TV's YouTube app, or **Stop casting**. A room that is already casting must stop first. The row also shows whether the cast is connected.
+- **Make host** next to any singer assigns the host role. The new host and the previous host are both told.
+- **+ Add room** creates a room; the first person to join becomes its host.
+- **Delete room** (asks first) disconnects everyone and shows them "This room was closed by the admin". The play log and room log files are kept.
+
+**Appearance tab**
+- Colour presets: **Orange** (default), **Blue**, **White** and **Green**. White is a neutral monochrome look; the interface stays dark.
+- The preset here changes the **admin pages only**, and is saved in `data/settings.json`.
+- **Rooms have their own colour:** the host picks it in the room's menu (☰ → Settings → Room colour), and you can set it per room on the Rooms tab. The home and screen landing pages always use the default.
+
+**Debug tab**
+- **Server:** CPU, memory, system memory, uptime, connections, rooms, log size, Node version and the data folder. Refreshes every 3 seconds.
+- **Performance over time:** line charts of CPU, memory, connections and rooms for the last 1 hour, 6 hours, 24 hours, 3 days or 7 days.
+  - The server records one sample a minute and keeps 7 days, in `data/metrics/samples.jsonl`, so the history survives restarts.
+  - Hover or tap a chart for the value at that time. A break in a line means the server was off.
+  - "Show the numbers as a table" lists the same data.
+- **Logs:** the system log or one room's log (including closed rooms), filtered by level, with a live view.
+- **Verbose YouTube cast log:** a checkbox, off by default. When on, the log also records every command sent to the TV and every event it reports (very chatty; for debugging a cast). The setting is saved in `data/settings.json`.
+- **Log files** are local files only, never a database:
+  - `data/logs/server-YYYY-MM-DD.log` has every line, one file per day. The last 30 days are kept; older days are deleted automatically.
+  - `data/logs/rooms/<CODE>.log` has one room's lines: created, joins, songs queued and played, host changes, settings, screen errors, closed. Each file holds at most 5 MB; when it's full, the oldest lines make room for new ones.
+  - The play log (`data/rooms/`) keeps each room for 30 days after its last song.
+
+**Account tab:** change the password.
+
+### Rooms and state
+- **What's in memory:** live rooms (queue, host, settings). Rooms expire after 6 idle hours, and **a server restart clears all live rooms**.
+- **What survives a restart:** the files in `data/`: the play log, log files, performance history, the admin colour preset and the admin password. A room's colour is part of the room, so it's lost with it.
+
+---
