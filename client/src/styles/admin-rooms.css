@@ -1,0 +1,51 @@
+/* ---------- admin: room tools + settings ---------- */
+.room-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+.room-tools .input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.room-tools label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.admin-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.5rem;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  background: rgb(var(--rim-rgb) / 0.04);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.check input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--accent);
+  flex: none;
+}
+.check > span {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.check > span .small {
+  font-weight: 400;
+}
+.check.colour {
+  cursor: default;
+}
+
