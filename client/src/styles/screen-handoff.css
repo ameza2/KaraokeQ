@@ -1,0 +1,173 @@
+/* ---------- screen hand-off + fullscreen ---------- */
+.screen-msg.replaced {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--bg);
+}
+.tap-play {
+  z-index: 6;
+  background: rgb(var(--ink-rgb) / 0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.tap-icon {
+  width: 3.4em;
+  height: 3.4em;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.2em;
+  padding-left: 0.2em;
+  background: var(--accent-grad);
+  color: var(--on-accent);
+  box-shadow: 0 0 60px 6px rgb(var(--glow-3) / 0.35);
+}
+.full-btn {
+  position: absolute;
+  top: 0.6em;
+  right: 0.6em;
+  z-index: 7;
+  width: 2.6em;
+  height: 2.6em;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: rgb(var(--ink-2-rgb) / 0.65);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: 1.05em;
+  opacity: 0.85;
+}
+.full-btn:hover {
+  opacity: 1;
+}
+.embed.full {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  aspect-ratio: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  font-size: clamp(13px, 1.6vw, 26px);
+}
+.embed.full .intro {
+  left: 2em;
+  bottom: 5.5em;
+  padding: 1em 1.6em;
+  border-radius: 1.4em;
+  max-width: 60%;
+}
+.embed.full .intro-singer {
+  font-size: 2.3em;
+}
+.embed.full .full-btn {
+  top: max(0.8em, env(safe-area-inset-top));
+  right: max(0.8em, env(safe-area-inset-right));
+}
+.embed[hidden] {
+  display: none;
+}
+.embed.full .corner-join {
+  top: 4.2em; /* clear the ✕ button */
+}
+
+/* ---------- fullscreen toolbar (YouTube-style) ---------- */
+.fs-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 3.5em 1.4em max(0.9em, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgb(var(--ink-rgb) / 0.85), rgb(var(--ink-rgb) / 0.45) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  transition: opacity 0.35s ease;
+}
+.fs-controls.faded {
+  opacity: 0;
+  pointer-events: none;
+}
+.fs-scrub {
+  font-size: 0.95em;
+}
+.fs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.fs-spacer {
+  flex: 1;
+}
+.fs-btn {
+  width: 2.6em;
+  height: 2.6em;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: 1.05em;
+  transition:
+    background 0.2s,
+    transform 0.15s;
+}
+.fs-btn:hover:not(:disabled),
+.fs-btn:focus-visible {
+  background: rgb(var(--rim-rgb) / 0.14);
+  outline: none;
+}
+.fs-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.fs-btn:disabled {
+  opacity: 0.3;
+}
+.fs-btn.play {
+  width: 3.1em;
+  height: 3.1em;
+  background: var(--accent-grad);
+  color: var(--on-accent);
+}
+.embed.full.ui-hidden,
+.embed.full.ui-hidden .seek-catcher {
+  cursor: none;
+}
+.embed.full .seek-catcher {
+  cursor: pointer;
+}
+.embed.full .intro {
+  bottom: 8.5em;
+}
+
+/* this screen's raw-IP address is blocked for the current video */
+.ip-blocked {
+  z-index: 8;
+  padding: 1.2em;
+  text-align: center;
+  background: rgb(var(--ink-rgb) / 0.9);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.ip-blocked .muted {
+  max-width: 34em;
+  line-height: 1.5;
+}
+.ip-blocked .row {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* the first-click overlay sits above the (already cued) video and its controls */
+.start-overlay:not(.tap-play):not(.ip-blocked) {
+  z-index: 9;
+  background: var(--bg);
+}
+
