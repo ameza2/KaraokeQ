@@ -32,8 +32,14 @@ export interface RoomSettings {
 
 export interface SearchPage {
   results: VideoResult[];
+  /** The page these results are (0-based). It can be lower than the one asked for when that is past the end. */
+  page: number;
+  pageSize: number;
+  total: number; // results known so far for this search (all pages, after filtering)
   hasMore: boolean;
   hidden: number; // results dropped because they can't play on the current output
+  /** Changes when the server rebuilds this search; paging across versions would mix two result lists. */
+  version: string;
 }
 
 // ---------- public HTTP API ----------

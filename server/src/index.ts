@@ -13,6 +13,7 @@ import { adminRouter } from "./admin/routes.ts";
 import { Metrics } from "./metrics.ts";
 import { castLog } from "./playback/lounge.ts";
 import { publicRoutes } from "./http/publicRoutes.ts";
+import { installFakeYoutube } from "./searchFake.ts";
 import { errorHandler } from "./http/errors.ts";
 import { staticClient } from "./http/staticClient.ts";
 import { noStore, securityHeaders } from "./http/security.ts";
@@ -54,6 +55,7 @@ metrics.start();
 
 // ---------- HTTP API ----------
 startShareHostWatch();
+if (process.env.KARAOKE_FAKE_YOUTUBE === "1") installFakeYoutube(app); // tests and the stress test only
 publicRoutes(app, { rooms, playLog });
 cspReportRoute(app);
 app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));

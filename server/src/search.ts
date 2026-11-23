@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Innertube, Log, YTNodes } from "youtubei.js";
 import type { SearchPage, VideoResult } from "@karaoke/shared";
 
@@ -6,10 +7,29 @@ import type { SearchPage, VideoResult } from "@karaoke/shared";
 // only real errors out of the system log.
 Log.setLevel(Log.Level.ERROR);
 
-export const MAX_RESULTS = 100;
-const MAX_PAGES = 12; // YouTube returns ~20 per page; leave headroom for filtering
-const TTL = 6 * 3600e3;
-const MAX_QUERIES = 1000;
+// ---------- the YouTube side (swappable, so tests and the stress test need no network) ----------
+
+export interface RawVideo {
+  videoId: string;
+  title: string;
+  channel: string;
+  duration: string;
+}
+
+/** One page of YouTube results, and how to get the next one (null = there is no next page). */
+export interface SearchFeed {
+  videos: RawVideo[];
+  next: (() => Promise<SearchFeed>) | null;
+}
+
+export interface SearchBackend {
+  search(query: string): Promise<SearchFeed>;
+  /** true/false from YouTube's oEmbed answer; null when it could not tell (network hiccup). */
+  checkEmbeddable(videoId: string): Promise<boolean | null>;
+  suggest(query: string): Promise<string[]>;
+  /** Drop a YouTube session that started answering with empty pages. */
+  resetSession?(): void;
+}
 
 // One shared Innertube instance (re-created if it starts failing).
 let ytPromise: Promise<Innertube> | null = null;
@@ -23,137 +43,218 @@ function yt() {
 
 type YTSearch = Awaited<ReturnType<Innertube["search"]>>;
 
+function wrapFeed(feed: YTSearch): SearchFeed {
+  return {
+    videos: feed.results
+      .filterType(YTNodes.Video)
+      .filter((v) => !v.is_live && !v.is_upcoming)
+      .map((v) => ({
+        videoId: v.video_id,
+        title: v.title.toString(),
+        channel: v.author?.name ?? "",
+        duration: v.duration.text ?? "",
+      })),
+    next: feed.has_continuation ? async () => wrapFeed((await feed.getContinuation()) as YTSearch) : null,
+  };
+}
+
+const youtubeBackend: SearchBackend = {
+  async search(query) {
+    return wrapFeed(await (await yt()).search(query, { type: "video" }));
+  },
+  // youtubei.js can't tell us whether a video plays in an IFrame, but YouTube's
+  // oEmbed endpoint returns 401 when the uploader disabled embedding.
+  async checkEmbeddable(videoId) {
+    try {
+      const res = await fetch(`https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${videoId}`, { signal: AbortSignal.timeout(4000) });
+      if (res.status === 200) return true;
+      if (res.status === 401 || res.status === 403) return false;
+    } catch {
+      /* network hiccup: don't cache, assume playable */
+    }
+    return null;
+  },
+  async suggest(query) {
+    return (await yt()).getSearchSuggestions(query);
+  },
+  resetSession() {
+    ytPromise = null;
+  },
+};
+
+let backend: SearchBackend = youtubeBackend;
+let clock: () => number = Date.now;
+
+/** Test seam: swap the YouTube side (and the clock) and start with an empty cache. Call with no arguments to restore. */
+export function setSearchBackend(next?: SearchBackend, now?: () => number) {
+  backend = next ?? youtubeBackend;
+  clock = now ?? Date.now;
+  cache.clear();
+  embedCache.clear();
+}
+
+// ---------- the search cache ----------
+// One entry per search text. It is an append-only list: videos are added in the order YouTube
+// returned them and never removed or reordered, so "result #51" is always the same video and
+// a page is just a slice. Whether a video can be embedded is decided once, when it is added.
+
+export const MAX_PAGE_SIZE = 100;
+const MAX_VIDEOS = 500; // per search; relevance falls off long before this
+const MAX_PAGES = 25; // YouTube pages (about 20 videos each) per search
+const TTL = 6 * 3600e3; // since the entry was last used
+const MAX_QUERIES = 1000;
+const SWEEP_EVERY = 10 * 60e3;
+
 interface Entry {
-  at: number;
+  id: string; // the version: a new entry gets a new one
+  at: number; // last used
   videos: VideoResult[];
   ids: Set<string>;
-  feed: YTSearch | null; // last page fetched; null = exhausted
+  feed: SearchFeed | null; // the last page fetched, which knows how to get the next one
   pages: number;
+  done: boolean; // YouTube has no more
   lock: Promise<void>; // serialises page fetches for this query
 }
 
-const cache = new Map<string, Entry>();
+const cache = new Map<string, Entry>(); // oldest use first
 
-async function toResults(feed: YTSearch, entry: Entry): Promise<VideoResult[]> {
-  const fresh = feed.results
-    .filterType(YTNodes.Video)
-    .filter((v) => !v.is_live && !v.is_upcoming && !entry.ids.has(v.video_id))
-    .map((v) => ({
-      videoId: v.video_id,
-      title: v.title.toString(),
-      channel: v.author?.name ?? "",
-      duration: v.duration.text ?? "",
-      thumb: `https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg`,
-    }));
+const canFetch = (e: Entry) => !e.done && e.pages < MAX_PAGES && e.videos.length < MAX_VIDEOS;
+
+/** Remove searches nobody has used for a while. Runs on a timer; exported for tests. */
+export function sweepSearchCache() {
+  const now = clock();
+  for (const [key, e] of cache) if (now - e.at > TTL) cache.delete(key);
+}
+setInterval(sweepSearchCache, SWEEP_EVERY).unref();
+
+export const searchCacheSize = () => cache.size;
+
+async function toResults(raw: RawVideo[], e: Entry): Promise<VideoResult[]> {
+  const fresh = raw
+    .filter((v) => !e.ids.has(v.videoId))
+    .map((v) => ({ ...v, thumb: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` }));
   const flags = await Promise.all(fresh.map((v) => isEmbeddable(v.videoId)));
-  fresh.forEach((v) => entry.ids.add(v.videoId));
+  fresh.forEach((v) => e.ids.add(v.videoId));
   return fresh.map((v, i) => ({ ...v, embeddable: flags[i] }));
+}
+
+/** Fetches the next page of YouTube results into the entry. */
+async function fetchMore(e: Entry, q: string): Promise<void> {
+  if (e.pages === 0) {
+    const query = /karaoke/i.test(q) ? q : `${q} karaoke`;
+    const attempt = async () => {
+      const feed = await backend.search(query);
+      return { feed, videos: await toResults(feed.videos, e) };
+    };
+    let { feed, videos } = await attempt();
+    if (videos.length === 0) {
+      // A stale YouTube session answers with an empty page instead of an error.
+      console.warn(`search "${q}": no videos came back, retrying with a fresh YouTube session`);
+      backend.resetSession?.();
+      ({ feed, videos } = await attempt());
+    }
+    e.videos.push(...videos);
+    e.feed = feed;
+  } else {
+    const next = e.feed?.next;
+    if (!next) {
+      e.done = true;
+      return;
+    }
+    const feed = await next();
+    e.videos.push(...(await toResults(feed.videos, e)));
+    e.feed = feed;
+  }
+  e.pages++;
+  if (!e.feed?.next) e.done = true;
 }
 
 const playable = (v: VideoResult) => v.embeddable !== false && embedCache.get(v.videoId) !== false;
 
 /**
- * Returns up to `limit` results (max 100). With `playableOnly`, videos that
- * can't be embedded are dropped and more pages are fetched to make up for them.
+ * One page of results: `page` (0-based) of `pageSize`. With `playableOnly`, videos that can't be
+ * embedded are left out and more YouTube pages are fetched to make up for them. A page past the
+ * end gives the last page that exists (see `page` in the reply).
  */
-export async function searchVideos(rawQuery: string, rawLimit: number, playableOnly: boolean): Promise<SearchPage> {
+export async function searchVideos(rawQuery: string, rawPage: number, rawPageSize: number, playableOnly: boolean): Promise<SearchPage> {
   const q = rawQuery.trim().replace(/\s+/g, " ").slice(0, 120);
-  const limit = Math.max(1, Math.min(MAX_RESULTS, Math.floor(rawLimit) || 25));
-  if (!q) return { results: [], hasMore: false, hidden: 0 };
+  const pageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, Math.floor(rawPageSize) || 25));
+  const wanted = Math.max(0, Math.floor(rawPage) || 0);
+  if (!q) return { results: [], page: 0, pageSize, total: 0, hasMore: false, hidden: 0, version: "" };
 
   const key = q.toLowerCase();
-  let entry = cache.get(key);
-  if (!entry || Date.now() - entry.at > TTL) {
-    if (cache.size >= MAX_QUERIES) cache.delete(cache.keys().next().value!);
-    entry = { at: Date.now(), videos: [], ids: new Set(), feed: null, pages: 0, lock: Promise.resolve() };
-    cache.set(key, entry);
-    const e = entry;
-    e.lock = (async () => {
-      const query = /karaoke/i.test(q) ? q : `${q} karaoke`;
-      try {
-        const attempt = async () => {
-          const feed = await (await yt()).search(query, { type: "video" });
-          return { feed, videos: await toResults(feed, e) };
-        };
-        let { feed, videos } = await attempt();
-        if (videos.length === 0) {
-          // A stale YouTube session answers with an empty page instead of an error.
-          console.warn(`search "${q}": no videos came back, retrying with a fresh YouTube session`);
-          ytPromise = null;
-          ({ feed, videos } = await attempt());
-        }
-        e.videos.push(...videos);
-        e.feed = feed.has_continuation ? feed : null;
-        e.pages = 1;
-        if (e.videos.length === 0) cache.delete(key); // never cache an empty page for 24h
-      } catch (err) {
-        ytPromise = null; // force a fresh session next time
-        cache.delete(key);
-        throw err;
-      }
-    })();
+  let e = cache.get(key);
+  if (e && clock() - e.at > TTL) {
+    cache.delete(key);
+    e = undefined;
   }
+  if (!e) {
+    if (cache.size >= MAX_QUERIES) cache.delete(cache.keys().next().value!);
+    e = { id: randomUUID(), at: clock(), videos: [], ids: new Set(), feed: null, pages: 0, done: false, lock: Promise.resolve() };
+  }
+  e.at = clock();
+  cache.delete(key); // re-insert: the map stays ordered by last use
+  cache.set(key, e);
 
-  const e = entry;
-  const count = () => (playableOnly ? e.videos.filter(playable).length : e.videos.length);
+  const entry = e;
+  const pool = () => (playableOnly ? entry.videos.filter((v) => v.embeddable !== false) : entry.videos);
+  const need = (wanted + 1) * pageSize;
 
   // Fetch further pages until we have enough (one fetcher at a time per query).
-  const run = e.lock.then(async () => {
-    while (count() < limit && e.feed && e.pages < MAX_PAGES) {
+  const run = entry.lock.then(async () => {
+    while (pool().length < need && canFetch(entry)) {
       try {
-        const next = (await e.feed.getContinuation()) as YTSearch;
-        e.videos.push(...(await toResults(next, e)));
-        e.feed = next.has_continuation ? next : null;
+        await fetchMore(entry, q);
       } catch (err) {
+        if (entry.pages === 0) throw err; // the first page failing is the caller's problem
         console.warn("search continuation failed:", (err as Error).message);
-        e.feed = null;
+        entry.done = true;
       }
-      e.pages++;
     }
   });
-  e.lock = run.catch(() => {});
-  await run;
+  entry.lock = run.catch(() => {});
+  try {
+    await run;
+  } catch (err) {
+    backend.resetSession?.(); // force a fresh session next time
+    if (cache.get(key) === entry) cache.delete(key);
+    throw err;
+  }
+  if (entry.videos.length === 0 && cache.get(key) === entry) cache.delete(key); // never cache an empty answer
 
-  const pool = playableOnly ? e.videos.filter(playable) : e.videos;
-  const results = pool.slice(0, limit).map((v) => (playable(v) ? v : { ...v, embeddable: false }));
-  const canFetchMore = !!e.feed && e.pages < MAX_PAGES;
+  const all = pool();
+  const lastPage = Math.max(0, Math.ceil(all.length / pageSize) - 1);
+  const page = Math.min(wanted, lastPage);
+  const end = (page + 1) * pageSize;
   return {
-    results,
-    hasMore: limit < MAX_RESULTS && (pool.length > limit || canFetchMore),
-    hidden: e.videos.length - pool.length,
+    results: all.slice(page * pageSize, end).map((v) => (playable(v) ? v : { ...v, embeddable: false })),
+    page,
+    pageSize,
+    total: all.length,
+    hasMore: all.length > end || canFetch(entry),
+    hidden: entry.videos.length - all.length,
+    version: entry.id,
   };
 }
 
 export async function suggest(q: string): Promise<string[]> {
   const query = q.trim().slice(0, 80);
   if (!query) return [];
-  return (await yt()).getSearchSuggestions(query);
+  return backend.suggest(query);
 }
 
 // ---------- embeddability ----------
-// youtubei.js can't tell us whether a video plays in an IFrame, but YouTube's
-// oEmbed endpoint returns 401 when the uploader disabled embedding.
 
 const embedCache = new Map<string, boolean>();
 
 export async function isEmbeddable(videoId: string): Promise<boolean> {
   const known = embedCache.get(videoId);
   if (known !== undefined) return known;
-  try {
-    const res = await fetch(
-      `https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${videoId}`,
-      { signal: AbortSignal.timeout(4000) },
-    );
-    if (res.status === 200 || res.status === 401 || res.status === 403) {
-      const ok = res.status === 200;
-      if (embedCache.size > 20000) embedCache.clear();
-      embedCache.set(videoId, ok);
-      return ok;
-    }
-  } catch {
-    /* network hiccup: don't cache, assume playable */
-  }
-  return true;
+  const ok = await backend.checkEmbeddable(videoId);
+  if (ok === null) return true;
+  if (embedCache.size > 20000) embedCache.clear();
+  embedCache.set(videoId, ok);
+  return ok;
 }
 
 export const knownNotEmbeddable = (videoId: string) => embedCache.get(videoId) === false;

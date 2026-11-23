@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import type { ApiError, CreateRoomResponse, RoomExistsResponse, ServerInfo, SuggestResponse } from "@karaoke/shared";
+import type { ApiError, CreateRoomResponse, RoomExistsResponse, SearchPage, ServerInfo, SuggestResponse } from "@karaoke/shared";
 import QRCode from "qrcode";
 import type { RoomRegistry } from "../rooms/index.ts";
 import type { PlayLog } from "../playLog.ts";
@@ -39,7 +39,11 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
       // Filter by what the room's current output can play (default: web player).
       const room = rooms.get(String(req.query.room ?? ""));
       const playableOnly = (room?.mode ?? "screen") === "screen";
-      res.json(await searchVideos(String(req.query.q ?? ""), Number(req.query.limit ?? 25), playableOnly));
+      // ?page= and ?pageSize= (the paged API). ?limit= is the older "first N results" form.
+      const legacy = req.query.page === undefined && req.query.limit !== undefined;
+      const page = legacy ? 0 : Number(req.query.page ?? 0);
+      const pageSize = Number(legacy ? req.query.limit : (req.query.pageSize ?? 25));
+      res.json((await searchVideos(String(req.query.q ?? ""), page, pageSize, playableOnly)) satisfies SearchPage);
     } catch (err) {
       console.error("search failed:", err);
       res.status(502).json({ error: "Search is temporarily unavailable. Try again in a moment." } satisfies ApiError);
