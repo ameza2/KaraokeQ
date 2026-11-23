@@ -75,6 +75,26 @@
 .embed.full .corner-join {
   top: 4.2em; /* clear the ✕ button */
 }
+/* with the control bar: hides with it, smaller and tucked into the corner */
+.embed.full .corner-join.with-bar {
+  top: 0.6em;
+  right: 0.6em;
+  padding: 0.4em;
+  border-radius: 0.9em;
+  transition: opacity 0.35s ease;
+}
+.embed.full .corner-join.with-bar .qr {
+  width: 4.5em;
+  height: 4.5em;
+  margin-bottom: 0.2em;
+}
+.embed.full .corner-join.with-bar .small {
+  font-size: 0.8em;
+}
+.embed.full .corner-join.faded {
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* ---------- fullscreen toolbar (YouTube-style) ---------- */
 .fs-controls {

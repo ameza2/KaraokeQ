@@ -440,7 +440,7 @@ export default function ScreenPlayer({
       {playing && (
         <>
           {big && (
-            <div className="corner-join">
+            <div className={`corner-join${fsBar ? " with-bar" : ""}${fsBar && !uiVisible ? " faded" : ""}`}>
               <img className="qr" src={qrSrc(joinUrl)} alt="" />
               <div className="small">
                 Join: <b>{code}</b>
