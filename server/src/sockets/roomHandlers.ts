@@ -2,10 +2,11 @@ import { Room } from "../rooms/index.ts";
 import type { SocketContext } from "./context.ts";
 
 /** Joining a room, renaming, leaving. */
-export function roomHandlers({ socket, rooms, room, leave }: SocketContext) {
+export function roomHandlers({ socket, roomForCode, room, leave }: SocketContext) {
   socket.on("room:join", ({ code, singerId, name, hostToken, asScreen }, ack) => {
-    const r = rooms.get(code);
-    if (!r) return ack({ ok: false, error: "That room doesn't exist (or has expired)." });
+    const found = roomForCode(code);
+    if ("error" in found) return ack({ ok: false, error: found.error });
+    const r = found.room;
     const cleanName = String(name ?? "").trim().slice(0, 24);
     if (!cleanName || !singerId) return ack({ ok: false, error: "Enter a name to join." });
 

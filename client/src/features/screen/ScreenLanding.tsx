@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { CreateRoomResponse, RoomExistsResponse } from "@karaoke/shared";
+import type { ApiError, CreateRoomResponse, RoomExistsResponse } from "@karaoke/shared";
 import { useNavigate } from "react-router-dom";
 import { useLanHost } from "../../lib/joinUrl.ts";
 import { getLastScreenRoom } from "../../lib/storage.ts";
@@ -39,7 +39,10 @@ export default function ScreenLanding() {
     e.preventDefault();
     const c = code.trim().toUpperCase();
     if (!c) return;
-    const { exists }: RoomExistsResponse = await fetch(`/api/rooms/${c}`).then((r) => r.json());
+    const res = await fetch(`/api/rooms/${c}`);
+    const body: Partial<RoomExistsResponse & ApiError> = await res.json().catch(() => ({}));
+    if (!res.ok) return setError(body.error ?? "Couldn't check that code. Try again.");
+    const exists = body.exists;
     if (exists) navigate(`/r/${c}/screen`);
     else setError(`No session with code ${c}.`);
   }

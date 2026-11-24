@@ -21,6 +21,8 @@ export interface BlockOptions {
   /** Failures in a row that ban for good. */
   permanentAfter?: number;
   tempMs?: number;
+  /** A run of failures is forgotten after this long without a new one. */
+  decayMs?: number;
   /** How often the file is checked for manual edits. */
   recheckMs?: number;
   now?: () => number;
@@ -37,6 +39,7 @@ interface Entry {
 interface Counter {
   fails: number;
   until: number;
+  last: number;
 }
 
 const MAX_COUNTERS = 10_000;
@@ -62,6 +65,7 @@ export class Blocklist {
   private readonly permanentAfter: number;
   private readonly tempMs: number;
   private readonly recheckMs: number;
+  private readonly decayMs: number;
   private readonly now: () => number;
 
   constructor(dataDir: string, opts: BlockOptions = {}) {
@@ -70,6 +74,7 @@ export class Blocklist {
     this.permanentAfter = opts.permanentAfter ?? 10;
     this.tempMs = opts.tempMs ?? 5 * 60e3;
     this.recheckMs = opts.recheckMs ?? 3000;
+    this.decayMs = opts.decayMs ?? 60 * 60e3;
     this.now = opts.now ?? Date.now;
     this.reload();
   }
@@ -84,6 +89,12 @@ export class Blocklist {
     return left > 0 ? { blocked: true, permanent: false, retryAfterMs: left } : { blocked: false };
   }
 
+  /** Blocked for good (the admin's list), in every scope? */
+  isPermanent(address: string | undefined): boolean {
+    this.refresh();
+    return this.permanent.has(deviceKey(address));
+  }
+
   /** A wrong guess. Does nothing for a device that is already blocked. */
   fail(scope: string, address: string | undefined): BlockStatus {
     const key = deviceKey(address);
@@ -91,8 +102,10 @@ export class Blocklist {
     if (before.blocked) return before;
 
     const id = `${scope}|${key}`;
-    const c = this.counters.get(id) ?? { fails: 0, until: 0 };
+    const c = this.counters.get(id) ?? { fails: 0, until: 0, last: 0 };
+    if (this.now() - c.last > this.decayMs) c.fails = 0; // an old run is forgotten, so a typo last week counts for nothing
     c.fails += 1;
+    c.last = this.now();
     this.counters.delete(id); // re-insert so the oldest entries come first
     this.counters.set(id, c);
     if (this.counters.size > MAX_COUNTERS) this.counters.delete(this.counters.keys().next().value as string);

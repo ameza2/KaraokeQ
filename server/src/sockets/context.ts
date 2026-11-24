@@ -1,5 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
+import { blockMessage, type Blocklist } from "../blocklist.ts";
+import { socketAddress } from "../net.ts";
 import type { Room, RoomRegistry } from "../rooms/index.ts";
 
 export interface SocketData {
@@ -23,6 +25,11 @@ export interface SocketContext {
   rooms: RoomRegistry;
   /** The room this socket joined, if any. */
   room(): Room | undefined;
+  /**
+   * The room for a code a client typed. A wrong code counts against the device: five in a row
+   * lock it out for five minutes, ten for good. `error` is ready to show.
+   */
+  roomForCode(code: string): { room: Room } | { error: string };
   /** The singer on this socket (undefined for a bare screen connection). */
   singerId(): string | undefined;
   /** Leave the room this socket joined (before joining another one). */
@@ -33,7 +40,7 @@ export interface SocketContext {
   controlRoom(): Room | undefined;
 }
 
-export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry): SocketContext {
+export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry, blocklist: Blocklist): SocketContext {
   const room = () => rooms.get(socket.data.code);
   const singerId = () => socket.data.singerId;
   return {
@@ -41,6 +48,15 @@ export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry): S
     socket,
     rooms,
     room,
+    roomForCode: (code) => {
+      const address = socketAddress(socket);
+      const locked = blocklist.status("code", address);
+      if (locked.blocked) return { error: blockMessage(locked) };
+      const found = rooms.get(code);
+      if (found) return { room: found };
+      const after = blocklist.fail("code", address);
+      return { error: after.blocked ? blockMessage(after) : "That room doesn't exist (or has expired)." };
+    },
     singerId,
     leave: () => {
       const r = room();

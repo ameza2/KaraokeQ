@@ -1,3 +1,4 @@
+import type { Blocklist } from "../blocklist.ts";
 import type { RoomRegistry } from "../rooms/index.ts";
 import { createContext, type IO } from "./context.ts";
 import { guardSocket } from "./guard.ts";
@@ -14,11 +15,11 @@ export type { IO, SocketData } from "./context.ts";
  * Wire every socket event. To add a feature, add a handler module for its area
  * and list it here; the event contract itself lives in shared/src/index.ts.
  */
-export function registerSocketHandlers(io: IO, rooms: RoomRegistry) {
+export function registerSocketHandlers(io: IO, rooms: RoomRegistry, blocklist: Blocklist) {
   io.on("connection", (socket) => {
     limitSocketEvents(socket);
     guardSocket(socket);
-    const ctx = createContext(io, socket, rooms);
+    const ctx = createContext(io, socket, rooms, blocklist);
     roomHandlers(ctx);
     queueHandlers(ctx);
     playbackHandlers(ctx);

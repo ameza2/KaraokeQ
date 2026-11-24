@@ -2,14 +2,15 @@ import { browserLabel } from "./browser.ts";
 import type { SocketContext } from "./context.ts";
 
 /** The screen page: joining as the room's output, progress and player events. */
-export function screenHandlers({ socket, rooms, room, leave }: SocketContext) {
+export function screenHandlers({ socket, roomForCode, room, leave }: SocketContext) {
   socket.on("screen:progress", (p) => {
     if (socket.data.isScreen && room()?.mode === "screen") room()?.reportProgress(p);
   });
 
   socket.on("screen:join", async ({ code, deviceId, host }, ack) => {
-    const r = rooms.get(code);
-    if (!r) return ack({ ok: false, error: "That room doesn't exist (or has expired)." });
+    const found = roomForCode(code);
+    if ("error" in found) return ack({ ok: false, error: found.error });
+    const r = found.room;
     // One output per room: the newest one wins. A screen joining stops the YouTube cast
     // (the host pairs again to cast), and older screens are told and dropped.
     if (r.mode === "lounge") await r.useScreen("Another screen has taken over. Pair again to cast.");

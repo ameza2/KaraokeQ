@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { CreateRoomResponse, RoomExistsResponse } from "@karaoke/shared";
+import type { ApiError, CreateRoomResponse, RoomExistsResponse } from "@karaoke/shared";
 import { useNavigate, Link } from "react-router-dom";
 import { setHostToken } from "../../lib/storage.ts";
 import { useLanHost } from "../../lib/joinUrl.ts";
@@ -34,7 +34,10 @@ export default function Home() {
     e.preventDefault();
     const c = code.trim().toUpperCase();
     if (!c) return;
-    const { exists }: RoomExistsResponse = await fetch(`/api/rooms/${c}`).then((r) => r.json());
+    const res = await fetch(`/api/rooms/${c}`);
+    const body: Partial<RoomExistsResponse & ApiError> = await res.json().catch(() => ({}));
+    if (!res.ok) return setError(body.error ?? "Couldn't check that code. Try again.");
+    const exists = body.exists;
     if (exists) navigate(`/r/${c}`);
     else setError(`No room with code ${c}.`);
   }

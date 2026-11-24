@@ -95,6 +95,21 @@ describe("Blocklist", () => {
     assert.equal(list.status("login", "10.0.0.12").blocked, true);
   });
 
+  it("forgets a run of failures after an hour without a new one", () => {
+    const { list } = make("decay");
+    for (let i = 0; i < 4; i++) list.fail("code", "10.0.0.13");
+    now += 61 * 60e3;
+    for (let i = 0; i < 4; i++) assert.equal(list.fail("code", "10.0.0.13").blocked, false);
+    assert.equal(list.fail("code", "10.0.0.13").blocked, true, "five within the hour still ban");
+  });
+
+  it("does not forget failures because a correct guess happened elsewhere", () => {
+    const { list } = make("scope-only");
+    for (let i = 0; i < 4; i++) list.fail("code", "10.0.0.14");
+    list.succeed("login", "10.0.0.14");
+    assert.equal(list.fail("code", "10.0.0.14").blocked, true);
+  });
+
   it("treats IPv4-mapped IPv6 addresses as the plain address", () => {
     assert.equal(deviceKey("::ffff:192.168.1.5"), "192.168.1.5");
     assert.equal(deviceKey(undefined), "?");

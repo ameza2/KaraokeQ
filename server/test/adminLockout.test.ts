@@ -34,10 +34,11 @@ describe("admin sign-in lockout", () => {
       await wait(300);
     }
     const res = await login("password");
-    assert.equal(res.status, 429);
+    assert.equal(res.status, 403, "a device blocked for good gets nothing from the server");
     assert.match(((await res.json()) as { error: string }).error, /blocked/);
     await wait(300);
-    assert.equal((await login("password")).status, 429, "a permanent ban does not expire");
+    assert.equal((await login("password")).status, 403, "a permanent ban does not expire");
+    assert.equal((await fetch(`${server.url}/api/info`)).status, 403, "not even the public API");
   });
 });
 

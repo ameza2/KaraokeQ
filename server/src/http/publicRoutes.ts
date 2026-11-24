@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
+import { blockMessage, type Blocklist } from "../blocklist.ts";
 import type { ApiError, CreateRoomResponse, RoomExistsResponse, SearchPage, ServerInfo, SuggestResponse } from "@karaoke/shared";
 import QRCode from "qrcode";
 import type { RoomRegistry } from "../rooms/index.ts";
@@ -7,7 +8,19 @@ import { getShareHost, lanIps } from "../net.ts";
 import { SearchBusyError, rateLimiter, searchVideos, suggest } from "../search.ts";
 
 /** The public (no sign-in) HTTP API: rooms, search, QR codes and network info. */
-export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegistry; playLog: PlayLog }) {
+export function publicRoutes(app: Express, { rooms, playLog, blocklist }: { rooms: RoomRegistry; playLog: PlayLog; blocklist: Blocklist }) {
+  /** The room for a code, or null after answering. A device that keeps guessing codes is locked out. */
+  const roomForCode = (req: Request, res: Response, miss: (res: Response) => void) => {
+    const locked = blocklist.status("code", req.ip);
+    if (locked.blocked) return void res.status(429).json({ error: blockMessage(locked) } satisfies ApiError);
+    const room = rooms.get(String(req.params.code));
+    if (room) return room;
+    const after = blocklist.fail("code", req.ip);
+    if (after.blocked) return void res.status(429).json({ error: blockMessage(after) } satisfies ApiError);
+    miss(res);
+    return null;
+  };
+
   // by: "client" → the creator gets the host token.
   // by: "screen" → a screen created it; no token. Either way, a room without a host
   // gives host to the first person who joins.
@@ -21,15 +34,18 @@ export function publicRoutes(app: Express, { rooms, playLog }: { rooms: RoomRegi
   });
 
   // The room's full play history (every song, oldest first). Singers' list shows the last 30.
+  const playsLimit = rateLimiter(30, 60e3);
   app.get("/api/rooms/:code/plays", async (req, res) => {
-    const room = rooms.get(req.params.code);
-    if (!room) return void res.status(404).json({ error: "No such room." });
+    if (!playsLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Slow down." } satisfies ApiError);
+    const room = roomForCode(req, res, (r) => void r.status(404).json({ error: "No such room." } satisfies ApiError));
+    if (!room) return;
     const plays = await playLog.plays(room.id);
     res.json({ code: room.code, createdAt: room.createdAt, count: plays.length, plays });
   });
 
   app.get("/api/rooms/:code", (req, res) => {
-    res.json({ exists: !!rooms.get(req.params.code) } satisfies RoomExistsResponse);
+    const room = roomForCode(req, res, (r) => void r.json({ exists: false } satisfies RoomExistsResponse));
+    if (room) res.json({ exists: true } satisfies RoomExistsResponse);
   });
 
   const searchLimit = rateLimiter(30, 60e3); // paging counts too
