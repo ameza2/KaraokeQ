@@ -207,7 +207,7 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 **Account tab:** change the password.
 
 ### Rooms and state
-- **What's in memory:** live rooms (queue, host, settings). Rooms expire after 6 idle hours, and **a server restart clears all live rooms**.
+- **What's in memory:** live rooms (queue, host, settings). Rooms expire after 2 idle hours (nobody connected and no activity), and **a server restart clears all live rooms**.
 - **What survives a restart:** the files in `data/`: the play log, log files, performance history, the device records (and who is blocked), the admin colour preset and the admin password. A room's colour is part of the room, so it's lost with it.
 
 ---

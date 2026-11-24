@@ -9,18 +9,20 @@ type IO = Server<ClientToServer, ServerToClient>;
 export class RoomRegistry {
   /** Live rooms allowed at once (each one holds memory and a play-log file). */
   static readonly MAX_ROOMS = Number(process.env.KARAOKE_MAX_ROOMS) || 200;
+  /** A room nobody is connected to is dropped after this long without activity (checked every 10 minutes). */
+  static readonly IDLE_MS = 2 * 3600e3;
   private rooms = new Map<string, Room>();
 
   constructor(
     private io: IO,
     readonly log: PlayLog,
   ) {
-    // Drop rooms nobody has touched for 6 hours.
+    // Drop rooms nobody is in and nobody has touched for IDLE_MS.
     setInterval(() => {
-      const cutoff = Date.now() - 6 * 3600e3;
+      const cutoff = Date.now() - RoomRegistry.IDLE_MS;
       for (const [code, room] of this.rooms)
         if (!room.isConnected() && room.lastActive < cutoff) {
-          room.say("room expired (idle for 6 hours)");
+          room.say(`room expired (idle for ${RoomRegistry.IDLE_MS / 3600e3} hours)`);
           void room.dispose();
           this.rooms.delete(code);
         }
