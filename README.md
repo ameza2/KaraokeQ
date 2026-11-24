@@ -93,6 +93,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
   - Either way, this device becomes the room's **screen**. It plays the videos full screen and shows the QR code while the queue is empty.
   - Exit full screen (✕ or Esc) to see the room page with all the controls; ⛶ goes back to full screen.
   - Opening `/r/CODE/screen` directly does the same.
+  - If the room already has a host (or has had a screen), the device asks for the room's **screen code** first (see below).
 - **Guests** scan the QR code or tap **Invite** to get the link.
 
 ### Full-screen controls (screen)
@@ -117,6 +118,19 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - **One screen per room:**
   - Opening the screen somewhere else takes over. The old screen stops and shows "This screen was replaced".
   - The new one resumes the current song at the same position, and stays paused if the room is paused.
+- **Screen code:** knowing a room's code is enough to join it, but not to become its screen.
+  - Each room has a 6-character screen code. The first screen of a brand-new room (one with no host yet) joins without it. After that, a new screen has to type the code.
+  - The host finds it in ☰ → Host & screen → **Screen code**; the admin sees it in the Rooms tab. The first screen keeps it in the browser, so reloads and reconnects need no typing.
+  - The host's own phone or laptop (Play on this device) needs no code. A YouTube cast needs the TV's own link code instead.
+  - A wrong code counts as a wrong guess (see below). The admin can reset the code, which only affects screens that join later, or stop the screen that is playing.
+- **One room per device:** a device (network address) is in one room at a time. Joining a second room closes the first one with a message. Turn this off with `KARAOKE_ONE_ROOM_PER_DEVICE=0`.
+
+### Wrong guesses and blocked devices
+- A device is its **network address** (a MAC address never reaches a server). Wrong guesses of a room code, a screen code or the admin password are counted per device.
+- **5 wrong in a row:** a 5-minute timeout ("Try again in N minutes"). Wrong guesses made during it are ignored.
+- **10 wrong in a row:** the device is blocked until the admin lifts it. It gets a "blocked" answer from every page and its sockets are refused.
+- A run of wrong guesses is forgotten after an hour. The admin manages all of this in the **Devices** tab; everyone behind one network address shares it, so one guesser can block a whole household.
+- Sockets from other websites are refused: a browser page may only connect from the address it was served from.
 
 ### Menu (☰)
 
@@ -124,7 +138,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 |---|---|
 | **Room** | Room history · Invite singers (QR code and link) · Change your name |
 | **Settings** (host/screen) | **Everyone can control:** off by default; when on, everyone can skip, ⏮, seek, reorder and remove · **Fair queue:** on by default (see below) · **Room colour:** Orange, Blue, White or Green, on every device in the room |
-| **Host & screen** (host/screen) | Make someone else host · Play on this device · Open the screen (always opens the shareable address) |
+| **Host & screen** (host/screen) | Make someone else host · Play on this device · Open the screen (always opens the shareable address) · **Screen code** (type it on another screen to use that one) |
 
 ### Queue rules
 - **Fair queue** (on by default): each singer's Nth song plays after everyone else's Nth song, so people with fewer songs go first. The person singing counts as having used their turn.
@@ -161,8 +175,9 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 - **First time:** username `Administrator`, password `password`. You must choose a new password (8 characters or more) before anything else is available.
 - **Storage:** the password is never stored. Only a salted scrypt hash is kept, in `data/admin/credentials.json`.
 - **Forgot the password?** Delete `data/admin/credentials.json` on the server. The login goes back to the default, which must be changed again.
-- **Sessions** last 12 hours and end when the server restarts. Sign-in attempts are limited to 8 per minute per address.
-- **Network:** the admin page works from any device on the LAN. The app uses plain HTTP, so only use it on a Wi-Fi network you trust.
+- **Sessions** last 12 hours and end when the server restarts. Changing the password signs out every session and gives the current one a new token.
+- **Wrong passwords:** 5 in a row give a 5-minute timeout and 10 block the device until you unblock it (see the Devices tab).
+- **Network:** the admin page works from any device on the LAN. The app itself speaks plain HTTP, so only use it on a Wi-Fi network you trust. To reach it from outside, put it behind a tunnel or Tailscale that provides HTTPS and set `KARAOKE_TRUST_PROXY=1`: the admin cookie is then marked `Secure`. Change the default password first.
 
 **Rooms tab**
 - Every live room with its **running time**, host, people online, queue length and screen status. Refreshes every 3 seconds.
@@ -243,7 +258,9 @@ server/   Express + Socket.IO
   src/sockets/            socket handlers by area (room, queue, playback, host, screen)
   src/rooms/              Room (queue, fair ordering, permissions, playback clock), registry, YouTube cast, embed-block rules
   src/search.ts           youtubei.js search + suggestions (no API quota), caching, rate limit
-  src/net.ts              LAN IP + shareable hostname (nip.io / sslip.io)
+  src/net.ts              LAN IP + shareable hostname (nip.io / sslip.io), client address behind a proxy, socket origin check
+  src/blocklist.ts        lockout: wrong guesses, timeouts, blocks for good
+  src/devices.ts          one JSON file per device (activity, bans, notes), kept in data/devices/
   src/playLog.ts          play log (PlayLog interface + JSON-lines file store)
   src/logger.ts           log files: captures console output; system + per-room logs
   src/siteSettings.ts     admin-page settings (its colour preset)
