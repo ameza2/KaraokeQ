@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { startServer, wait, type TestServer } from "./harness.ts";
@@ -40,5 +38,56 @@ describe("admin sign-in lockout", () => {
     assert.match(((await res.json()) as { error: string }).error, /blocked/);
     await wait(300);
     assert.equal((await login("password")).status, 429, "a permanent ban does not expire");
+  });
+});
+
+describe("admin blocklist controls", () => {
+  let cookie = "";
+  let other: TestServer;
+  const call = (method: string, p: string, body?: unknown) =>
+    fetch(`${other.url}/api/admin${p}`, { method, headers: { "content-type": "application/json", cookie }, body: body ? JSON.stringify(body) : undefined });
+
+  before(async () => {
+    other = await startServer({ KARAOKE_BLOCK_TEMP_MS: "60000" });
+    const res = await fetch(`${other.url}/api/admin/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "Administrator", password: "password" }) });
+    cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;
+    await fetch(`${other.url}/api/admin/password`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ current: "password", next: "a-better-one" }) });
+  });
+  after(async () => {
+    await other.stop();
+  });
+
+  it("needs a session", async () => {
+    const res = await fetch(`${other.url}/api/admin/blocklist`);
+    assert.equal(res.status, 401);
+  });
+
+  it("blocks and unblocks a device by address, and refuses to block the admin's own", async () => {
+    const empty = (await (await call("GET", "/blocklist"))!.json()) as { yourAddress: string; permanent: unknown[]; temporary: unknown[] };
+    assert.deepEqual([empty.permanent, empty.temporary], [[], []]);
+
+    assert.equal((await call("POST", "/blocklist", { address: "not an address" }))!.status, 400);
+    assert.equal((await call("POST", "/blocklist", { address: empty.yourAddress }))!.status, 400);
+
+    const added = await call("POST", "/blocklist", { address: "192.168.1.77" });
+    assert.equal(added!.status, 200);
+    assert.equal(((await added!.json()) as { permanent: { address: string }[] }).permanent[0]!.address, "192.168.1.77");
+    assert.equal((await call("POST", "/blocklist", { address: "192.168.1.77" }))!.status, 409);
+
+    assert.equal((await call("DELETE", "/blocklist/192.168.1.77"))!.status, 200);
+    assert.equal((await call("DELETE", "/blocklist/192.168.1.77"))!.status, 404);
+  });
+
+  it("lists a temporary ban and lets the admin end it early", async () => {
+    // five wrong sign-ins from this address (the admin's own session keeps working)
+    for (let i = 0; i < 5; i++) await fetch(`${other.url}/api/admin/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "x", password: "y" }) });
+    const report = (await (await call("GET", "/blocklist"))!.json()) as { yourAddress: string; temporary: { address: string; scope: string; retryAfterMs: number }[] };
+    assert.equal(report.temporary.length, 1);
+    assert.equal(report.temporary[0]!.scope, "login");
+    assert.ok(report.temporary[0]!.retryAfterMs > 0);
+
+    assert.equal((await call("DELETE", `/blocklist/${encodeURIComponent(report.yourAddress)}`))!.status, 200);
+    const after = (await (await call("GET", "/blocklist"))!.json()) as { temporary: unknown[] };
+    assert.equal(after.temporary.length, 0);
   });
 });

@@ -118,6 +118,48 @@ export class Blocklist {
     return [...this.permanent.values()];
   }
 
+  /** Devices in a temporary ban right now, with the time left (for the admin page). */
+  temporary(): { key: string; scope: string; fails: number; retryAfterMs: number }[] {
+    const t = this.now();
+    const out: { key: string; scope: string; fails: number; retryAfterMs: number }[] = [];
+    for (const [id, c] of this.counters) {
+      if (c.until <= t) continue;
+      const [scope, key] = id.split("|") as [string, string];
+      out.push({ key, scope, fails: c.fails, retryAfterMs: c.until - t });
+    }
+    return out;
+  }
+
+  /** The admin blocks a device for good. False when it already was. */
+  block(address: string, scope = "admin"): boolean {
+    this.refresh();
+    const key = deviceKey(address);
+    if (this.permanent.has(key)) return false;
+    this.ban(key, scope);
+    return true;
+  }
+
+  /**
+   * The admin lets a device back in: lifts a permanent ban, ends any temporary ban and
+   * forgets its failures. False when there was nothing to lift.
+   */
+  unblock(address: string): boolean {
+    this.refresh();
+    const key = deviceKey(address);
+    let changed = this.permanent.delete(key);
+    for (const id of [...this.counters.keys()]) {
+      if (id.endsWith(`|${key}`)) {
+        this.counters.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      console.warn(`blocklist: ${key} was unblocked by the admin`);
+      void this.save();
+    }
+    return changed;
+  }
+
   private ban(key: string, scope: string) {
     this.permanent.set(key, { key, since: new Date(this.now()).toISOString(), scope });
     console.warn(`blocklist: ${key} is blocked for good (${this.permanentAfter} wrong ${scope} attempts in a row). Remove it from ${this.file} to let it back in.`);

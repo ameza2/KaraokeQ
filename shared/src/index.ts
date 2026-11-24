@@ -220,6 +220,16 @@ export interface AdminSession {
   adminTheme: ThemeName;
 }
 
+/** Devices locked out for guessing secrets (admin password, room codes, screen codes). */
+export interface BlocklistReport {
+  /** The device asking, so the admin sees which entry is their own. */
+  yourAddress: string;
+  /** Blocked until the admin lifts it. */
+  permanent: { address: string; since: string; scope: string }[];
+  /** Blocked for a few minutes. */
+  temporary: { address: string; scope: string; fails: number; retryAfterMs: number }[];
+}
+
 export interface AdminRoomReport {
   code: string;
   id: string;

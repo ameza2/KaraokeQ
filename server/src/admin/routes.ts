@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Server } from "socket.io";
-import type { AdminRoomReport, AdminSession, AdminStats, MetricHistory } from "@karaoke/shared";
+import type { AdminRoomReport, BlocklistReport, AdminSession, AdminStats, MetricHistory } from "@karaoke/shared";
 import type { Logger } from "../logger.ts";
 import type { PlayLog } from "../playLog.ts";
 import type { Room, RoomRegistry } from "../rooms/index.ts";
@@ -10,7 +10,7 @@ import { isTheme, type SiteSettings } from "../siteSettings.ts";
 import { castLog } from "../playback/lounge.ts";
 import { AdminAuth } from "./credentials.ts";
 import type { Metrics } from "../metrics.ts";
-import { blockMessage, type Blocklist } from "../blocklist.ts";
+import { blockMessage, deviceKey, type Blocklist } from "../blocklist.ts";
 
 /**
  * Everything under /api/admin. Every route except login/session/logout needs a
@@ -238,6 +238,32 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     const room = rooms.get(req.params.code);
     if (!room) return void res.status(404).json({ error: "No such room." });
     res.json({ plays: await playLog.plays(room.id) });
+  });
+
+  // ----- blocked devices -----
+
+  const blocklistReport = (req: Request): BlocklistReport => ({
+    yourAddress: deviceKey(req.ip),
+    permanent: blocklist.list().map((e) => ({ address: e.key, since: e.since, scope: e.scope })),
+    temporary: blocklist.temporary().map((t) => ({ address: t.key, scope: t.scope, fails: t.fails, retryAfterMs: t.retryAfterMs })),
+  });
+  const ADDRESS = /^[0-9a-f:.]{2,45}$/i;
+
+  router.get("/blocklist", (req, res) => void res.json(blocklistReport(req)));
+
+  router.post("/blocklist", (req, res) => {
+    const address = deviceKey(String(req.body?.address ?? "").trim());
+    if (!ADDRESS.test(address)) return void res.status(400).json({ error: "Enter an IP address, like 192.168.1.20." });
+    if (address === deviceKey(req.ip)) return void res.status(400).json({ error: "That is this device. Blocking it would lock you out." });
+    if (!blocklist.block(address)) return void res.status(409).json({ error: "That device is already blocked." });
+    console.log(`admin: ${address} blocked by ${(res.locals.session as Session).username}`);
+    res.json(blocklistReport(req));
+  });
+
+  // Lifts a permanent ban, or ends a temporary one early and clears its failure count.
+  router.delete("/blocklist/:address", (req, res) => {
+    if (!blocklist.unblock(String(req.params.address))) return void res.status(404).json({ error: "That device is not blocked." });
+    res.json(blocklistReport(req));
   });
 
   // ----- appearance -----
