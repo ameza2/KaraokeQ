@@ -9,7 +9,8 @@ before(async () => {
   const json = { "content-type": "application/json" };
   const res = await fetch(`${server.url}/api/admin/login`, { method: "POST", headers: json, body: JSON.stringify({ username: "Administrator", password: "password" }) });
   cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;
-  await fetch(`${server.url}/api/admin/password`, { method: "POST", headers: { ...json, cookie }, body: JSON.stringify({ current: "password", next: "a-better-one" }) });
+  const changed = await fetch(`${server.url}/api/admin/password`, { method: "POST", headers: { ...json, cookie }, body: JSON.stringify({ current: "password", next: "a-better-one" }) });
+  cookie = (changed.headers.get("set-cookie") ?? "").split(";")[0]!; // a new token after the change
 });
 after(async () => void (await server.stop()));
 

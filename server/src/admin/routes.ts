@@ -66,8 +66,9 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     if (!s || s.expires < Date.now()) return undefined;
     return s;
   };
-  const setCookie = (res: Response, token: string, maxAgeSec: number) =>
-    res.setHeader("Set-Cookie", `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeSec}`);
+  // Secure when the request came in over HTTPS (req.secure follows X-Forwarded-Proto once KARAOKE_TRUST_PROXY is set), so the cookie never travels over plain HTTP.
+  const setCookie = (req: Request, res: Response, token: string, maxAgeSec: number) =>
+    res.setHeader("Set-Cookie", `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeSec}${req.secure ? "; Secure" : ""}`);
 
   const who = (req: Request) => req.ip ?? "?";
 
@@ -95,7 +96,7 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     blocklist.succeed("login", req.ip);
     const token = randomBytes(32).toString("hex");
     sessions.set(token, { ...result, expires: Date.now() + SESSION_MS });
-    setCookie(res, token, SESSION_MS / 1000);
+    setCookie(req, res, token, SESSION_MS / 1000);
     console.log(`admin: ${result.username} signed in from ${who(req)}${result.mustChangePassword ? " (default password: change required)" : ""}`);
     res.json({ authenticated: true, ...result, adminTheme: settings.adminTheme } satisfies AdminSession);
   });
@@ -109,7 +110,7 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
   router.post("/logout", (req, res) => {
     const token = tokenOf(req);
     if (token) sessions.delete(token);
-    setCookie(res, "", 0);
+    setCookie(req, res, "", 0);
     res.json({ ok: true });
   });
 
@@ -139,10 +140,12 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     if (problem) return void res.status(400).json({ error: problem });
     if (next === current) return void res.status(400).json({ error: "The new password must be different." });
     await auth.setPassword(s.username, next);
-    // Every other session is signed out; this one continues with full access.
-    const mine = tokenOf(req);
-    for (const token of sessions.keys()) if (token !== mine) sessions.delete(token);
+    // Every session is signed out, and this one carries on under a new token, so a token that leaked earlier is dead.
+    sessions.clear();
+    const fresh = randomBytes(32).toString("hex");
     s.mustChangePassword = false;
+    sessions.set(fresh, { ...s, expires: Date.now() + SESSION_MS });
+    setCookie(req, res, fresh, SESSION_MS / 1000);
     console.log(`admin: password changed by ${s.username}`);
     res.json({ ok: true });
   });

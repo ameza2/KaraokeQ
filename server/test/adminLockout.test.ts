@@ -52,7 +52,8 @@ describe("admin blocklist controls", () => {
     other = await startServer({ KARAOKE_BLOCK_TEMP_MS: "60000" });
     const res = await fetch(`${other.url}/api/admin/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "Administrator", password: "password" }) });
     cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;
-    await fetch(`${other.url}/api/admin/password`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ current: "password", next: "a-better-one" }) });
+    const changed = await fetch(`${other.url}/api/admin/password`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify({ current: "password", next: "a-better-one" }) });
+    cookie = (changed.headers.get("set-cookie") ?? "").split(";")[0]!; // changing the password issues a new session token
   });
   after(async () => {
     await other.stop();
