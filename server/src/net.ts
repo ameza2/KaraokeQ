@@ -73,3 +73,19 @@ export function socketAddress(socket: { handshake: { address: string; headers: R
   const chain = (Array.isArray(header) ? header.join(",") : (header ?? "")).split(",").map((s) => s.trim()).filter(Boolean);
   return chain[chain.length - hops] ?? remote;
 }
+
+/**
+ * Is this browser request from a page this server served? A page's Origin must name the same host
+ * (and port) the request was sent to, so another website can't open a socket from a visitor's
+ * browser. A request with no Origin header is not a browser page (a script, a test) and is let
+ * through: it can't carry a visitor's cookies, and the room rules still apply to it.
+ */
+export function sameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true;
+  if (!host) return false;
+  try {
+    return new URL(origin).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}

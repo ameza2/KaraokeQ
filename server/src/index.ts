@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
 import { RoomRegistry } from "./rooms/index.ts";
 import { FilePlayLog, dataDir } from "./playLog.ts";
-import { socketAddress, startShareHostWatch, trustedProxies } from "./net.ts";
+import { sameOrigin, socketAddress, startShareHostWatch, trustedProxies } from "./net.ts";
 import { Logger } from "./logger.ts";
 import { SiteSettings } from "./siteSettings.ts";
 import { AdminAuth, FileCredentialStore } from "./admin/credentials.ts";
@@ -42,7 +42,11 @@ app.use(cspHeader);
 app.use(express.json({ limit: "20kb" }));
 
 const http = createServer(app);
-const io = new Server<ClientToServer, ServerToClient, {}, SocketData>(http, { cors: { origin: true }, maxHttpBufferSize: 16_000 });
+const io = new Server<ClientToServer, ServerToClient, {}, SocketData>(http, {
+  // Same-origin only: the page and the socket come from one server, so no CORS is needed.
+  allowRequest: (req, done) => done(null, sameOrigin(req.headers.origin, req.headers.host)),
+  maxHttpBufferSize: 16_000,
+});
 const playLog = new FilePlayLog(dataDir());
 console.log(`data folder: ${dataDir()} (play log, logs, settings, admin login)`);
 io.use((socket, next) => (blocklist.isPermanent(socketAddress(socket)) ? next(new Error(blockMessage({ blocked: true, permanent: true }))) : next()));
