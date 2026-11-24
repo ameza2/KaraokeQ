@@ -2,7 +2,7 @@ import { Room } from "../rooms/index.ts";
 import type { SocketContext } from "./context.ts";
 
 /** Joining a room, renaming, leaving. */
-export function roomHandlers({ socket, roomForCode, room, leave }: SocketContext) {
+export function roomHandlers({ socket, roomForCode, closeOtherRooms, room, leave }: SocketContext) {
   socket.on("room:join", ({ code, singerId, name, hostToken, asScreen }, ack) => {
     const found = roomForCode(code);
     if ("error" in found) return ack({ ok: false, error: found.error });
@@ -12,6 +12,7 @@ export function roomHandlers({ socket, roomForCode, room, leave }: SocketContext
 
     const id = String(singerId).slice(0, 64);
     if (!r.singers.has(id) && r.singers.size >= Room.MAX_SINGERS) return ack({ ok: false, error: "This room is full." });
+    closeOtherRooms(r.code);
     // one room per socket: leaving the old one keeps it from showing this person online forever
     if (socket.data.code && socket.data.code !== r.code) leave();
     // Host = whoever proves it with the current token, or the first person into a room

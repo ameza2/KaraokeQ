@@ -2,7 +2,7 @@ import { browserLabel } from "./browser.ts";
 import type { SocketContext } from "./context.ts";
 
 /** The screen page: joining as the room's output, progress and player events. */
-export function screenHandlers({ socket, roomForCode, room, leave }: SocketContext) {
+export function screenHandlers({ socket, roomForCode, closeOtherRooms, room, leave }: SocketContext) {
   socket.on("screen:progress", (p) => {
     if (socket.data.isScreen && room()?.mode === "screen") room()?.reportProgress(p);
   });
@@ -18,6 +18,7 @@ export function screenHandlers({ socket, roomForCode, room, leave }: SocketConte
     // The awaits above can take seconds. If the socket hung up meanwhile, stop here: adding it
     // now would leave a screen that never disconnects (and a room that never expires).
     if (!socket.connected) return;
+    closeOtherRooms(r.code);
     if (socket.data.code && socket.data.code !== r.code) leave();
     r.replaceScreens(socket.id, "screen");
 

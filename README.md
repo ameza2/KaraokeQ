@@ -59,6 +59,7 @@ Then open `http://<shared-name>:3001`. Set `PORT` to use another port.
 | `KARAOKE_DATA_DIR` | `<repo>/data` | Where the play log, log files, performance history, settings and the admin login are kept |
 | `KARAOKE_MAX_ROOMS` | `200` | Rooms the server keeps open at once; creating more answers 503 |
 | `KARAOKE_ROOM_CREATE_PER_MIN` | `20` | Rooms one address may create per minute |
+| `KARAOKE_ONE_ROOM_PER_DEVICE` | `1` (on) | A device (network address) is in one room at a time: joining a second room closes the first. `0` turns it off, for example to try two rooms from one computer |
 | `KARAOKE_TRUST_PROXY` | `0` (none) | How many reverse proxies or tunnels sit in front of the server (usually `1`). Needed so each guest keeps their own address for limits and blocks; leave it unset on a home network |
 | `KARAOKE_YT_BUDGET_PER_MIN` | `80` | YouTube result pages the server may fetch per minute, all guests together (one phone may use a quarter of it); past that, new searches answer "busy" while pages already loaded keep working |
 | `KARAOKE_CSP_ENFORCE` | unset (report-only) | Set to `1` to enforce the Content-Security-Policy instead of only reporting violations to the log |

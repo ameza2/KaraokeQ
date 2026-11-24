@@ -238,6 +238,16 @@ export default function ScreenPlayer({
         /* player not created yet */
       }
     });
+    // this device joined another room (or the admin closed this one): stay disconnected
+    s.on("room:closed", ({ message }) => {
+      replacedHere = true;
+      setError(message);
+      try {
+        player.current?.stopVideo();
+      } catch {
+        /* player not created yet */
+      }
+    });
     return () => {
       s.disconnect();
     };

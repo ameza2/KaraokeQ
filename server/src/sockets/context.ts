@@ -30,6 +30,11 @@ export interface SocketContext {
    * lock it out for five minutes, ten for good. `error` is ready to show.
    */
   roomForCode(code: string): { room: Room } | { error: string };
+  /**
+   * A device is in one room at a time: close this device's sockets in any other room, so a
+   * phone that joins a second room leaves the first. Same room, any number of tabs, is fine.
+   */
+  closeOtherRooms(code: string): void;
   /** The singer on this socket (undefined for a bare screen connection). */
   singerId(): string | undefined;
   /** Leave the room this socket joined (before joining another one). */
@@ -39,6 +44,9 @@ export interface SocketContext {
   /** The room, only if this singer may use playback/queue controls (canControl). */
   controlRoom(): Room | undefined;
 }
+
+/** One room per device (network address). KARAOKE_ONE_ROOM_PER_DEVICE=0 turns it off, e.g. to test two rooms on one computer. */
+const ONE_ROOM_PER_DEVICE = process.env.KARAOKE_ONE_ROOM_PER_DEVICE !== "0";
 
 export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry, blocklist: Blocklist): SocketContext {
   const room = () => rooms.get(socket.data.code);
@@ -56,6 +64,15 @@ export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry, bl
       if (found) return { room: found };
       const after = blocklist.fail("code", address);
       return { error: after.blocked ? blockMessage(after) : "That room doesn't exist (or has expired)." };
+    },
+    closeOtherRooms: (code) => {
+      if (!ONE_ROOM_PER_DEVICE) return;
+      const address = socketAddress(socket);
+      for (const other of io.sockets.sockets.values()) {
+        if (other.id === socket.id || !other.data.code || other.data.code === code || socketAddress(other) !== address) continue;
+        other.emit("room:closed", { message: "You joined another room on this device, so this one was closed." });
+        other.disconnect(true);
+      }
     },
     singerId,
     leave: () => {
