@@ -30,6 +30,14 @@ describe("HTTP headers", () => {
     assert.equal(res.headers.get("cache-control"), "no-store");
   });
 
+  it("does not serve a room's play log publicly: only the admin can read it", async () => {
+    const { code } = await createRoom(server.url);
+    const res = await fetch(`${server.url}/api/rooms/${code}/plays`);
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "Not found." });
+    assert.equal((await fetch(`${server.url}/api/admin/rooms/${code}/plays`)).status, 401);
+  });
+
   it("returns JSON for unknown API paths", async () => {
     const res = await fetch(`${server.url}/api/nope`);
     assert.equal(res.status, 404);

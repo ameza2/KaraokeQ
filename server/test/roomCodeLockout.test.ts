@@ -24,7 +24,6 @@ describe("room code guessing over HTTP", () => {
 
     const real = await createRoom(server.url);
     assert.equal((await exists(server, real.code)).status, 429, "a right code is refused too while the device is in a timeout");
-    assert.equal((await get(server, `/api/rooms/${real.code}/plays`)).status, 429);
 
     await wait(450);
     assert.deepEqual(await exists(server, real.code), { status: 200, body: { exists: true } });
@@ -39,14 +38,6 @@ describe("room code guessing over HTTP", () => {
       locked = (await exists(server, BAD)).status === 429;
     }
     assert.ok(locked, "the device was locked out within five wrong guesses");
-  });
-
-  it("limits how fast the full play log can be read", async () => {
-    await wait(450);
-    const real = await createRoom(server.url);
-    let limited = 0;
-    for (let i = 0; i < 40; i++) if ((await get(server, `/api/rooms/${real.code}/plays`)).status === 429) limited++;
-    assert.ok(limited >= 10, `expected the 31st read onward to be refused, saw ${limited}`);
   });
 });
 

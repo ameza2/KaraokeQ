@@ -3,12 +3,11 @@ import { blockMessage, type Blocklist } from "../blocklist.ts";
 import type { ApiError, CreateRoomResponse, RoomExistsResponse, SearchPage, ServerInfo, SuggestResponse } from "@karaoke/shared";
 import QRCode from "qrcode";
 import type { RoomRegistry } from "../rooms/index.ts";
-import type { PlayLog } from "../playLog.ts";
 import { getShareHost, lanIps } from "../net.ts";
 import { SearchBusyError, rateLimiter, searchVideos, suggest } from "../search.ts";
 
 /** The public (no sign-in) HTTP API: rooms, search, QR codes and network info. */
-export function publicRoutes(app: Express, { rooms, playLog, blocklist }: { rooms: RoomRegistry; playLog: PlayLog; blocklist: Blocklist }) {
+export function publicRoutes(app: Express, { rooms, blocklist }: { rooms: RoomRegistry; blocklist: Blocklist }) {
   /** The room for a code, or null after answering. A device that keeps guessing codes is locked out. */
   const roomForCode = (req: Request, res: Response, miss: (res: Response) => void) => {
     const locked = blocklist.status("code", req.ip);
@@ -31,16 +30,6 @@ export function publicRoutes(app: Express, { rooms, playLog, blocklist }: { room
     const room = rooms.create();
     if (!room) return void res.status(503).json({ error: "This server has too many rooms open right now." } satisfies ApiError);
     res.json((byScreen ? { code: room.code } : { code: room.code, hostToken: room.hostToken }) satisfies CreateRoomResponse);
-  });
-
-  // The room's full play history (every song, oldest first). Singers' list shows the last 30.
-  const playsLimit = rateLimiter(30, 60e3);
-  app.get("/api/rooms/:code/plays", async (req, res) => {
-    if (!playsLimit(req.ip ?? "?")) return void res.status(429).json({ error: "Slow down." } satisfies ApiError);
-    const room = roomForCode(req, res, (r) => void r.status(404).json({ error: "No such room." } satisfies ApiError));
-    if (!room) return;
-    const plays = await playLog.plays(room.id);
-    res.json({ code: room.code, createdAt: room.createdAt, count: plays.length, plays });
   });
 
   app.get("/api/rooms/:code", (req, res) => {

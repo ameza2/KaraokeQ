@@ -149,7 +149,7 @@ On Windows PowerShell: `$env:PORT = "4000"; npm start`.
 - **Room history** (☰): the last 30 songs played, newest first, 10 per page with ‹ › buttons. **Replay** adds a song to the back of the queue, sung by you.
 - **Play log:** every song played in every room is saved, whether finished or skipped:
   - **Files:** `data/rooms/<date>_<CODE>_<roomId>.jsonl`. The first line describes the room, then one line per song: video, title, singer, and when it was added and played.
-  - **API:** `GET /api/rooms/<CODE>/plays` returns a live room's full list.
+  - **Viewing it:** the admin page (Rooms tab, **Show all** in a room's history). There is no public API for it.
   - **Notes:** a rewound song is logged again when it leaves the stage a second time. A room's file is deleted 30 days after its last song. `data/` is git-ignored and safe to delete.
 
 ### Admin area (`/admin`)

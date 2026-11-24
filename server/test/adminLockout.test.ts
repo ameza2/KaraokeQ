@@ -63,6 +63,13 @@ describe("admin blocklist controls", () => {
     assert.equal(res.status, 401);
   });
 
+  it("still reads a room's full play log", async () => {
+    const created = (await (await fetch(`${other.url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json()) as { code: string };
+    const res = await call("GET", `/rooms/${created.code}/plays`);
+    assert.equal(res!.status, 200);
+    assert.deepEqual(await res!.json(), { plays: [] });
+  });
+
   it("blocks and unblocks a device by address, and refuses to block the admin's own", async () => {
     const empty = (await (await call("GET", "/blocklist"))!.json()) as { yourAddress: string; permanent: unknown[]; temporary: unknown[] };
     assert.deepEqual([empty.permanent, empty.temporary], [[], []]);

@@ -65,7 +65,7 @@ metrics.start();
 // ---------- HTTP API ----------
 startShareHostWatch();
 if (process.env.KARAOKE_FAKE_YOUTUBE === "1") installFakeYoutube(app); // tests and the stress test only
-publicRoutes(app, { rooms, playLog, blocklist });
+publicRoutes(app, { rooms, blocklist });
 cspReportRoute(app);
 app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, blocklist, dataDir: dataDir() }));
 staticClient(app); // keep last: the /api 404 catch-all and the built client
