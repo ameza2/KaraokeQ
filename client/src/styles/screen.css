@@ -191,3 +191,39 @@
   margin: 0 auto 0.5rem;
 }
 
+/* Asking for the room's screen code: stacked, with a big input, so it reads on a phone */
+.screen-code-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow);
+  font-size: 0.95rem;
+}
+.screen-code-form {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+.screen-code-form .code-input {
+  width: 100%;
+  min-height: 3.5rem;
+  font-size: 1.75rem; /* 16px or more also stops iPhones zooming in on focus */
+  letter-spacing: 0.3em;
+  padding: 0.4rem 0.4rem 0.4rem calc(0.4rem + 0.3em); /* the left padding balances the spacing after the last letter */
+  font-variant-numeric: tabular-nums;
+}
+.screen-code-form .code-input::placeholder {
+  letter-spacing: 0.15em;
+  font-size: 1.1rem;
+}
+.screen-code-form .btn {
+  width: 100%;
+  min-height: 3rem;
+  justify-content: center;
+}

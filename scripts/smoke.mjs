@@ -201,12 +201,17 @@ try {
   await page.keyboard.press("Escape");
   const other = await browser.createBrowserContext(); // its own storage: a different device
   const tv = await other.newPage();
-  await tv.setViewport({ width: 1280, height: 720 });
+  await tv.setViewport({ width: 420, height: 860, deviceScaleFactor: 1 }); // a phone typing the code is the tight case
   tv.on("pageerror", (e) => errors.push("tv pageerror: " + e.message));
   await tv.goto(`${BASE}/r/${code}/screen`, { waitUntil: "networkidle0" });
   const needs = await tv.waitForSelector("input[aria-label='Screen code']", { timeout: 8000 }).then(() => true, () => false);
   await shot(tv, "08b-screen-code-prompt");
   check("a second screen is asked for the code", needs);
+  if (needs) {
+    // readable on a phone: a wide input with big letters, a full-width button, nothing sideways
+    const box = await tv.$eval("input[aria-label='Screen code']", (el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize), overflow: document.documentElement.scrollWidth > window.innerWidth }));
+    check("the screen code box is big enough to read", box.w >= 240 && box.h >= 48 && box.font >= 16 && !box.overflow, JSON.stringify(box));
+  }
   if (needs && menuCode) {
     await tv.type("input[aria-label='Screen code']", "AAAAAA");
     await clickText(tv, "button", "Use this screen");

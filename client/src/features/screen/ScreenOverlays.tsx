@@ -47,7 +47,7 @@ export function ScreenCodePrompt({ isScreen, message, onSubmit }: { isScreen: bo
   const [value, setValue] = useState("");
   const form = (
     <form
-      className="row"
+      className="screen-code-form"
       onSubmit={(e) => {
         e.preventDefault();
         if (value.trim()) onSubmit(value.trim());
@@ -55,7 +55,8 @@ export function ScreenCodePrompt({ isScreen, message, onSubmit }: { isScreen: bo
     >
       <input
         className="input code-input"
-        placeholder="Code"
+        placeholder="CODE"
+        inputMode="text"
         aria-label="Screen code"
         value={value}
         onChange={(e) => setValue(e.target.value.toUpperCase())}
@@ -72,8 +73,8 @@ export function ScreenCodePrompt({ isScreen, message, onSubmit }: { isScreen: bo
   );
   if (!isScreen)
     return (
-      <div className="embed-note">
-        <span className="muted">{message}</span>
+      <div className="screen-code-card">
+        <span>{message}</span>
         {form}
       </div>
     );
