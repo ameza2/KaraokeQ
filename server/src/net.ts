@@ -51,3 +51,25 @@ export function startShareHostWatch() {
   void refresh();
   setInterval(refresh, 10 * 60e3).unref(); // the LAN IP can change (DHCP)
 }
+
+/**
+ * How many reverse proxies sit in front of the server (KARAOKE_TRUST_PROXY), 0 = none.
+ *
+ * With none, a device's address is the one its connection comes from, and a made-up
+ * X-Forwarded-For header is ignored. Behind a tunnel or reverse proxy, set it to the number of
+ * proxies (usually 1): the address is then the one the nearest proxy saw, which a visitor can't fake.
+ * Left at 0 behind a proxy, every guest shares the proxy's address, so they all share one limit and one ban.
+ */
+export function trustedProxies(env: string | undefined = process.env.KARAOKE_TRUST_PROXY): number {
+  const n = Number(env?.trim());
+  return Number.isInteger(n) && n > 0 && n <= 10 ? n : 0;
+}
+
+/** The address of the device behind a socket, using the same proxy rule as Express's `req.ip`. */
+export function socketAddress(socket: { handshake: { address: string; headers: Record<string, string | string[] | undefined> } }, hops = trustedProxies()): string {
+  const remote = socket.handshake.address;
+  if (hops === 0) return remote;
+  const header = socket.handshake.headers["x-forwarded-for"];
+  const chain = (Array.isArray(header) ? header.join(",") : (header ?? "")).split(",").map((s) => s.trim()).filter(Boolean);
+  return chain[chain.length - hops] ?? remote;
+}

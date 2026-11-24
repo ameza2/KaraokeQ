@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
 import { RoomRegistry } from "./rooms/index.ts";
 import { FilePlayLog, dataDir } from "./playLog.ts";
-import { startShareHostWatch } from "./net.ts";
+import { startShareHostWatch, trustedProxies } from "./net.ts";
 import { Logger } from "./logger.ts";
 import { SiteSettings } from "./siteSettings.ts";
 import { AdminAuth, FileCredentialStore } from "./admin/credentials.ts";
@@ -27,7 +27,7 @@ logger.captureConsole();
 
 const PORT = Number(process.env.PORT ?? 3001);
 const app = express();
-app.set("trust proxy", true);
+app.set("trust proxy", trustedProxies()); // 0 unless KARAOKE_TRUST_PROXY says how many proxies are in front
 app.disable("x-powered-by");
 app.use(compression()); // gzip text responses over 1kB (the client bundle: 341kB -> ~108kB)
 app.use(securityHeaders);
