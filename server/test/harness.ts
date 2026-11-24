@@ -26,6 +26,8 @@ function freePort(): Promise<number> {
 
 export interface TestServer {
   url: string;
+  /** The server's data folder (a temp folder, removed on stop). */
+  dataDir: string;
   stop(): Promise<void>;
 }
 
@@ -53,6 +55,7 @@ export async function startServer(env: Record<string, string> = {}): Promise<Tes
   });
   return {
     url: `http://localhost:${port}`,
+    dataDir,
     async stop() {
       child.removeAllListeners("exit");
       child.stdout?.destroy();

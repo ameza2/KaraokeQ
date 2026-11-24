@@ -1,4 +1,5 @@
-import type { Blocklist } from "../blocklist.ts";
+import { deviceKey, type Blocklist } from "../blocklist.ts";
+import { socketAddress } from "../net.ts";
 import type { RoomRegistry } from "../rooms/index.ts";
 import { createContext, type IO } from "./context.ts";
 import { guardSocket } from "./guard.ts";
@@ -17,6 +18,9 @@ export type { IO, SocketData } from "./context.ts";
  */
 export function registerSocketHandlers(io: IO, rooms: RoomRegistry, blocklist: Blocklist) {
   io.on("connection", (socket) => {
+    // Remember the device: when it connected, what it joined as, when it left (devices.ts).
+    blocklist.devices.connect(socket.id, deviceKey(socketAddress(socket)), String(socket.handshake.headers["user-agent"] ?? ""));
+    socket.on("disconnect", () => blocklist.devices.disconnect(socket.id));
     limitSocketEvents(socket);
     guardSocket(socket);
     const ctx = createContext(io, socket, rooms, blocklist);

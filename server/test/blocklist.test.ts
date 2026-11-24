@@ -55,7 +55,7 @@ describe("Blocklist", () => {
     assert.equal(list.status("login", "10.0.0.9").blocked, false);
   });
 
-  it("bans for good at ten misses in a row, in every scope, and writes the file", async () => {
+  it("bans for good at ten misses in a row, in every scope, and writes the device file", async () => {
     const { dir: d, list } = make("perm");
     for (let i = 0; i < 10; i++) {
       list.fail("code", "10.0.0.10");
@@ -64,13 +64,14 @@ describe("Blocklist", () => {
     assert.deepEqual(list.status("code", "::ffff:10.0.0.10"), { blocked: true, permanent: true });
     assert.deepEqual(list.status("login", "10.0.0.10"), { blocked: true, permanent: true });
     await new Promise((r) => setTimeout(r, 50));
-    const saved = JSON.parse(readFileSync(path.join(d, "blocklist.json"), "utf8")) as { blocked: { key: string }[] };
-    assert.deepEqual(saved.blocked.map((e) => e.key), ["10.0.0.10"]);
+    const saved = JSON.parse(readFileSync(path.join(d, "devices", "10.0.0.10.json"), "utf8")) as { status: string; blocked: { scope: string; by: string }; failures: Record<string, number> };
+    assert.equal(saved.status, "blocked");
+    assert.deepEqual([saved.blocked.scope, saved.blocked.by, saved.failures.code], ["code", "auto", 10]);
     now += 24 * 3600e3;
     assert.equal(list.status("code", "10.0.0.10").blocked, true, "a permanent ban never expires");
   });
 
-  it("loads permanent bans from the file after a restart and lets a device back in when its entry is removed", async () => {
+  it("loads permanent bans from the device files after a restart and lets a device back in when its status is set to ok", async () => {
     const { dir: d, list } = make("restart");
     for (let i = 0; i < 10; i++) {
       list.fail("login", "10.0.0.11");
@@ -80,8 +81,10 @@ describe("Blocklist", () => {
     const again = new Blocklist(d, { now: clock, recheckMs: 0 });
     assert.equal(again.status("login", "10.0.0.11").blocked, true);
 
-    writeFileSync(path.join(d, "blocklist.json"), JSON.stringify({ blocked: [] }));
-    assert.equal(again.status("login", "10.0.0.11").blocked, false, "removing the entry takes effect without a restart");
+    const file = path.join(d, "devices", "10.0.0.11.json");
+    const record = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...record, status: "ok", blocked: null }, null, 2));
+    assert.equal(again.status("login", "10.0.0.11").blocked, false, "editing the file takes effect without a restart");
   });
 
   it("keeps the list in memory when the file is damaged", async () => {
@@ -91,7 +94,7 @@ describe("Blocklist", () => {
       now += 5 * 60e3 + 1;
     }
     await new Promise((r) => setTimeout(r, 50));
-    writeFileSync(path.join(d, "blocklist.json"), "{not json");
+    writeFileSync(path.join(d, "devices", "10.0.0.12.json"), "{not json");
     assert.equal(list.status("login", "10.0.0.12").blocked, true);
   });
 

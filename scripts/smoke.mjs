@@ -238,12 +238,18 @@ try {
   await pw[0].type("password"); await pw[1].type("smoketest123"); await pw[2].type("smoketest123");
   await ap.keyboard.press("Enter");
   await ap.waitForSelector("[role=tab]", { timeout: 20000 }); // password hashing can be slow on a cold server
-  for (const tab of ["Rooms", "Appearance", "Debug", "Account"]) {
+  for (const tab of ["Rooms", "Devices", "Appearance", "Debug", "Account"]) {
     await clickText(ap, "[role=tab]", tab);
     await sleep(tab === "Debug" ? 1500 : 600);
     await shot(ap, "10-admin-" + tab);
     check(`admin tab ${tab}`, await ap.evaluate((t) => document.querySelector("[role=tab][aria-selected=true]")?.textContent.includes(t), tab));
   }
+  // Devices: the host phone and the bots are listed as connected, with the room and a name
+  await clickText(ap, "[role=tab]", "Devices");
+  await ap.waitForFunction((c) => document.body.textContent.includes("Connected now") && document.body.textContent.includes(c), { timeout: 8000 }, code).catch(() => {});
+  const devicesText = await ap.evaluate(() => document.body.textContent);
+  check("admin Devices lists who is connected", devicesText.includes("Alice") && devicesText.includes("Every device seen"));
+  await shot(ap, "10b-admin-devices");
   await clickText(ap, "[role=tab]", "Rooms");
   await sleep(3500);
   const roomRow = await ap.evaluate((c) => document.body.textContent.includes(c), code);

@@ -241,6 +241,64 @@ export interface BlocklistReport {
   temporary: { address: string; scope: string; fails: number; retryAfterMs: number }[];
 }
 
+/** One time a device was locked out, and how it ended. */
+export interface DeviceBan {
+  kind: "temporary" | "permanent";
+  /** What was being guessed: "login", "code", "screen", or "admin" for a block by hand. */
+  scope: string;
+  by: "auto" | "admin";
+  at: string;
+  /** End of a temporary ban. */
+  until: string | null;
+  /** Set when the admin lifted it early. */
+  liftedAt: string | null;
+}
+
+/**
+ * Everything the server remembers about one device (a network address), kept for good in
+ * `data/devices/<address>.json`. Lists are capped so a file stays small.
+ */
+export interface DeviceRecord {
+  address: string;
+  firstSeen: string;
+  lastSeen: string;
+  /** Socket connections opened. */
+  connections: number;
+  status: "ok" | "blocked";
+  /** Why and when the device is blocked for good (null while status is "ok"). */
+  blocked: { at: string; scope: string; by: "auto" | "admin" } | null;
+  /** The admin's own note about this device. */
+  note: string;
+  /** Wrong guesses per scope, all time. */
+  failures: Record<string, number>;
+  lastFailureAt: string | null;
+  bans: DeviceBan[];
+  /** Names it has joined with (the person can change; the device is the address). */
+  names: { name: string; singerId: string; lastSeen: string }[];
+  rooms: { code: string; role: "singer" | "host" | "screen"; joins: number; firstAt: string; lastSeen: string }[];
+  userAgents: { agent: string; lastSeen: string }[];
+}
+
+/** A device with at least one open connection right now. */
+export interface ActiveDevice {
+  address: string;
+  connections: number;
+  connectedSince: string;
+  people: { name: string; room: string | null; role: string | null }[];
+}
+
+export interface DevicesReport {
+  /** The device asking, so the admin sees which one is their own. */
+  yourAddress: string;
+  /** Devices on record. */
+  total: number;
+  blocked: DeviceRecord[];
+  temporary: { address: string; scope: string; fails: number; retryAfterMs: number }[];
+  active: ActiveDevice[];
+  /** Most recently seen first, limited (and filtered by the search box). */
+  recent: DeviceRecord[];
+}
+
 export interface AdminRoomReport {
   code: string;
   id: string;

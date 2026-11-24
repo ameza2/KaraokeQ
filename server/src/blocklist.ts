@@ -1,7 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
-import { writeFileAtomic } from "./atomicWrite.ts";
+import { DeviceRegistry } from "./devices.ts";
 
 /**
  * Lockout for devices that keep guessing secrets (admin password, room codes, screen codes).
@@ -12,8 +9,10 @@ import { writeFileAtomic } from "./atomicWrite.ts";
  *    after the ban ends starts another 5 minutes);
  *  - at the 10th failure in a row it is banned for good, in every scope.
  *
- * Permanent bans live in `<data>/blocklist.json`. To let a device back in, delete its entry
- * from that file: the change is picked up within a few seconds, no restart needed.
+ * Permanent bans are kept on the device's own record (`devices.ts`, `<data>/devices/<address>.json`).
+ * To let a device back in, set its `status` to "ok" there: the change is picked up within a few
+ * seconds, no restart needed. Temporary bans and the failure counts are in memory only; the
+ * record keeps a history of them.
  */
 export interface BlockOptions {
   /** Failures in a row that start a temporary ban. */
@@ -23,9 +22,11 @@ export interface BlockOptions {
   tempMs?: number;
   /** A run of failures is forgotten after this long without a new one. */
   decayMs?: number;
-  /** How often the file is checked for manual edits. */
+  /** How often the device files are checked for manual edits. */
   recheckMs?: number;
   now?: () => number;
+  /** Share a registry (the server does, so it can record activity on it too). */
+  devices?: DeviceRegistry;
 }
 
 export type BlockStatus = { blocked: false } | { blocked: true; permanent: true } | { blocked: true; permanent: false; retryAfterMs: number };
@@ -56,34 +57,27 @@ export function blockMessage(s: BlockStatus): string {
 export const deviceKey = (address: string | undefined) => (address ?? "?").replace(/^::ffff:/i, "").toLowerCase();
 
 export class Blocklist {
-  readonly file: string;
-  private permanent = new Map<string, Entry>();
+  readonly devices: DeviceRegistry;
   private counters = new Map<string, Counter>();
-  private seen = "";
-  private checkedAt = 0;
   private readonly tempAfter: number;
   private readonly permanentAfter: number;
   private readonly tempMs: number;
-  private readonly recheckMs: number;
   private readonly decayMs: number;
   private readonly now: () => number;
 
   constructor(dataDir: string, opts: BlockOptions = {}) {
-    this.file = path.join(dataDir, "blocklist.json");
     this.tempAfter = opts.tempAfter ?? 5;
     this.permanentAfter = opts.permanentAfter ?? 10;
     this.tempMs = opts.tempMs ?? 5 * 60e3;
-    this.recheckMs = opts.recheckMs ?? 3000;
     this.decayMs = opts.decayMs ?? 60 * 60e3;
     this.now = opts.now ?? Date.now;
-    this.reload();
+    this.devices = opts.devices ?? new DeviceRegistry(dataDir, { now: this.now, recheckMs: opts.recheckMs });
   }
 
   /** Is this device locked out of `scope` right now? Check this before looking at the secret. */
   status(scope: string, address: string | undefined): BlockStatus {
-    this.refresh();
     const key = deviceKey(address);
-    if (this.permanent.has(key)) return { blocked: true, permanent: true };
+    if (this.devices.isBlocked(key)) return { blocked: true, permanent: true };
     const until = this.counters.get(`${scope}|${key}`)?.until ?? 0;
     const left = until - this.now();
     return left > 0 ? { blocked: true, permanent: false, retryAfterMs: left } : { blocked: false };
@@ -91,8 +85,7 @@ export class Blocklist {
 
   /** Blocked for good (the admin's list), in every scope? */
   isPermanent(address: string | undefined): boolean {
-    this.refresh();
-    return this.permanent.has(deviceKey(address));
+    return this.devices.isBlocked(deviceKey(address));
   }
 
   /** A wrong guess. Does nothing for a device that is already blocked. */
@@ -106,6 +99,7 @@ export class Blocklist {
     if (this.now() - c.last > this.decayMs) c.fails = 0; // an old run is forgotten, so a typo last week counts for nothing
     c.fails += 1;
     c.last = this.now();
+    this.devices.recordFailure(key, scope);
     this.counters.delete(id); // re-insert so the oldest entries come first
     this.counters.set(id, c);
     if (this.counters.size > MAX_COUNTERS) this.counters.delete(this.counters.keys().next().value as string);
@@ -115,6 +109,7 @@ export class Blocklist {
       this.ban(key, scope);
     } else if (c.fails >= this.tempAfter) {
       c.until = this.now() + this.tempMs;
+      this.devices.recordTimeout(key, scope, c.until);
       console.warn(`blocklist: ${key} is blocked for ${Math.round(this.tempMs / 60e3)} min (${c.fails} wrong ${scope} attempts in a row)`);
     }
     return this.status(scope, address);
@@ -127,8 +122,7 @@ export class Blocklist {
 
   /** Permanently blocked devices, for the admin and tests. */
   list(): Entry[] {
-    this.refresh();
-    return [...this.permanent.values()];
+    return this.devices.blocked().map((r) => ({ key: r.address, since: r.blocked?.at ?? "", scope: r.blocked?.scope ?? "" }));
   }
 
   /** Devices in a temporary ban right now, with the time left (for the admin page). */
@@ -144,11 +138,10 @@ export class Blocklist {
   }
 
   /** The admin blocks a device for good. False when it already was. */
-  block(address: string, scope = "admin"): boolean {
-    this.refresh();
+  block(address: string, scope = "admin", note?: string): boolean {
     const key = deviceKey(address);
-    if (this.permanent.has(key)) return false;
-    this.ban(key, scope);
+    if (!this.devices.block(key, scope, "admin", note)) return false;
+    console.warn(`blocklist: ${key} was blocked by the admin`);
     return true;
   }
 
@@ -157,75 +150,20 @@ export class Blocklist {
    * forgets its failures. False when there was nothing to lift.
    */
   unblock(address: string): boolean {
-    this.refresh();
     const key = deviceKey(address);
-    let changed = this.permanent.delete(key);
+    let changed = this.devices.unblock(key);
     for (const id of [...this.counters.keys()]) {
       if (id.endsWith(`|${key}`)) {
         this.counters.delete(id);
         changed = true;
       }
     }
-    if (changed) {
-      console.warn(`blocklist: ${key} was unblocked by the admin`);
-      void this.save();
-    }
+    if (changed) console.warn(`blocklist: ${key} was unblocked by the admin`);
     return changed;
   }
 
   private ban(key: string, scope: string) {
-    this.permanent.set(key, { key, since: new Date(this.now()).toISOString(), scope });
-    console.warn(`blocklist: ${key} is blocked for good (${this.permanentAfter} wrong ${scope} attempts in a row). Remove it from ${this.file} to let it back in.`);
-    void this.save();
-  }
-
-  private async save() {
-    try {
-      await mkdir(path.dirname(this.file), { recursive: true });
-      await writeFileAtomic(this.file, JSON.stringify({ blocked: [...this.permanent.values()] }, null, 2) + "\n", 0o600);
-      this.seen = this.stamp();
-    } catch (e) {
-      console.error("blocklist: could not save the file:", (e as Error).message);
-    }
-  }
-
-  private stamp() {
-    try {
-      const s = statSync(this.file);
-      return `${s.mtimeMs}:${s.size}`;
-    } catch {
-      return "";
-    }
-  }
-
-  /** Pick up a manual edit of the file (an entry removed) without a restart. */
-  private refresh() {
-    const t = this.now();
-    if (t - this.checkedAt < this.recheckMs) return;
-    this.checkedAt = t;
-    if (this.stamp() !== this.seen) this.reload();
-  }
-
-  private reload() {
-    this.seen = this.stamp();
-    if (!existsSync(this.file)) {
-      // A deleted file means everyone is let back in.
-      this.permanent.clear();
-      return;
-    }
-    try {
-      const parsed = JSON.parse(readFileSync(this.file, "utf8")) as { blocked?: unknown };
-      if (!Array.isArray(parsed.blocked)) throw new Error("expected a \"blocked\" list");
-      const next = new Map<string, Entry>();
-      for (const e of parsed.blocked as unknown[]) {
-        if (typeof e !== "object" || e === null || typeof (e as Entry).key !== "string") continue;
-        const { key, since, scope } = e as Partial<Entry>;
-        next.set(deviceKey(key), { key: deviceKey(key), since: String(since ?? ""), scope: String(scope ?? "") });
-      }
-      this.permanent = next;
-    } catch (e) {
-      // A damaged file must not let blocked devices back in: keep what is already in memory.
-      console.error(`blocklist: ${this.file} is unreadable (${(e as Error).message}); keeping the list in memory`);
-    }
+    this.devices.block(key, scope, "auto");
+    console.warn(`blocklist: ${key} is blocked for good (${this.permanentAfter} wrong ${scope} attempts in a row). Set its status to "ok" in ${this.devices.dir} to let it back in.`);
   }
 }

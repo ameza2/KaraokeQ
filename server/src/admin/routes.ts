@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Server } from "socket.io";
-import type { AdminRoomReport, BlocklistReport, AdminSession, AdminStats, MetricHistory } from "@karaoke/shared";
+import type { AdminRoomReport, BlocklistReport, DevicesReport, AdminSession, AdminStats, MetricHistory } from "@karaoke/shared";
 import type { Logger } from "../logger.ts";
 import type { PlayLog } from "../playLog.ts";
 import type { Room, RoomRegistry } from "../rooms/index.ts";
@@ -270,11 +270,30 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
 
   router.get("/blocklist", (req, res) => void res.json(blocklistReport(req)));
 
+  // Everything remembered about devices: who is blocked, timeouts, who is connected, who was seen lately.
+  router.get("/devices", (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.slice(0, 60) : "";
+    res.json({
+      yourAddress: deviceKey(req.ip),
+      total: blocklist.devices.size,
+      blocked: blocklist.devices.blocked(),
+      temporary: blocklist.temporary().map((t) => ({ address: t.key, scope: t.scope, fails: t.fails, retryAfterMs: t.retryAfterMs })),
+      active: blocklist.devices.active(),
+      recent: blocklist.devices.recent(50, q),
+    } satisfies DevicesReport);
+  });
+
+  router.put("/devices/:address/note", (req, res) => {
+    const address = deviceKey(String(req.params.address));
+    if (!blocklist.devices.setNote(address, String(req.body?.note ?? ""))) return void res.status(404).json({ error: "No such device." });
+    res.json({ ok: true });
+  });
+
   router.post("/blocklist", (req, res) => {
     const address = deviceKey(String(req.body?.address ?? "").trim());
     if (!ADDRESS.test(address)) return void res.status(400).json({ error: "Enter an IP address, like 192.168.1.20." });
     if (address === deviceKey(req.ip)) return void res.status(400).json({ error: "That is this device. Blocking it would lock you out." });
-    if (!blocklist.block(address)) return void res.status(409).json({ error: "That device is already blocked." });
+    if (!blocklist.block(address, "admin", typeof req.body?.note === "string" ? req.body.note : undefined)) return void res.status(409).json({ error: "That device is already blocked." });
     console.log(`admin: ${address} blocked by ${(res.locals.session as Session).username}`);
     res.json(blocklistReport(req));
   });

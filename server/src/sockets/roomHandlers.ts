@@ -2,7 +2,7 @@ import { Room } from "../rooms/index.ts";
 import type { SocketContext } from "./context.ts";
 
 /** Joining a room, renaming, leaving. */
-export function roomHandlers({ socket, roomForCode, closeOtherRooms, room, leave }: SocketContext) {
+export function roomHandlers({ socket, roomForCode, closeOtherRooms, room, leave, blocklist }: SocketContext) {
   socket.on("room:join", ({ code, singerId, name, hostToken, asScreen }, ack) => {
     const found = roomForCode(code);
     if ("error" in found) return ack({ ok: false, error: found.error });
@@ -26,6 +26,7 @@ export function roomHandlers({ socket, roomForCode, closeOtherRooms, room, leave
     socket.join([r.channel, r.singerChannel(id)]);
     if (!r.singers.get(id)?.sockets.size) r.say(`${screen ? "screen device" : "singer"} joined: ${cleanName}${isHost ? " (host)" : ""}`);
     r.upsertSinger(id, cleanName, socket.id, screen);
+    blocklist.devices.join(socket.id, { name: cleanName, singerId: id, code: r.code, role: screen ? "screen" : isHost ? "host" : "singer" });
     ack({ ok: true, state: r.state(), isHost, ...(claimed ? { hostToken: r.hostToken } : {}) });
     if (claimed) socket.emit("notice", { level: "info", message: "You're the host of this room." });
     if (r.progress) socket.emit("playback:progress", r.progress);

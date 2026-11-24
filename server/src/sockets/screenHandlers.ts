@@ -42,6 +42,7 @@ export function screenHandlers({ socket, roomForCode, closeOtherRooms, room, lea
     // the device showing this screen gets the host's permissions (until another screen takes over)
     r.screenSinger = deviceId ? String(deviceId).slice(0, 64) : null;
     r.everHadScreen = true;
+    blocklist.devices.join(socket.id, { name: "", singerId: r.screenSinger ?? "screen", code: r.code, role: "screen" });
     ack({ ok: true, state: r.state(), screenCode: r.screenCode });
     // Pick up exactly where playback was (timestamp + paused state).
     if (r.mode === "screen") socket.emit("screen:command", r.resumeCommand());

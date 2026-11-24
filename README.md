@@ -178,6 +178,14 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 - **+ Add room** creates a room; the first person to join becomes its host.
 - **Delete room** (asks first) disconnects everyone and shows them "This room was closed by the admin". The play log and room log files are kept.
 
+- **Screen code:** each room has a code another device must type to become its screen (the first screen of a new room needs none). The row shows it, **Reset code** makes a new one for future screens, and **Stop screen** disconnects the screen that is playing.
+
+**Devices tab**
+- A device is its network address. The server keeps one file per device in `data/devices/` (first and last time seen, connections, names, rooms, browsers, wrong guesses, bans and your note), and never deletes them.
+- **Connected now** lists who is online and in which room, each with a **Block** button. **Every device seen** is searchable by address, name, room code or note.
+- **Blocked until you lift it** and **Blocked for a few minutes** show why and since when, with **Unblock** and **End timeout**. After 5 wrong guesses in a row (admin password, room code, screen code) a device is blocked for 5 minutes; after 10 it stays blocked until you unblock it.
+- **Block a device** takes an IP address and an optional note. You can also unblock by editing the device's file (set `status` to `"ok"`).
+
 **Appearance tab**
 - Colour presets: **Orange** (default), **Blue**, **White** and **Green**. White is a neutral monochrome look; the interface stays dark.
 - The preset here changes the **admin pages only**, and is saved in `data/settings.json`.
@@ -200,7 +208,7 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 
 ### Rooms and state
 - **What's in memory:** live rooms (queue, host, settings). Rooms expire after 6 idle hours, and **a server restart clears all live rooms**.
-- **What survives a restart:** the files in `data/`: the play log, log files, performance history, the admin colour preset and the admin password. A room's colour is part of the room, so it's lost with it.
+- **What survives a restart:** the files in `data/`: the play log, log files, performance history, the device records (and who is blocked), the admin colour preset and the admin password. A room's colour is part of the room, so it's lost with it.
 
 ---
 
@@ -248,7 +256,7 @@ client/   React + Vite
   src/components/ui/      shared Sheet, Dialog and ToggleItem
   src/lib/                socket hook, storage, URLs, colour preset (theme.ts)
   src/styles/             CSS split by area; index.css sets the load order
-data/     runtime files, git-ignored: rooms/ (play log), logs/, metrics/, admin/ (login), settings.json
+data/     runtime files, git-ignored: rooms/ (play log), devices/ (one file per device), logs/, metrics/, admin/ (login), settings.json
 ```
 
 ## Next steps
