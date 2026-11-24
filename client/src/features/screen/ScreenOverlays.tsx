@@ -42,6 +42,53 @@ export function ReplacedNotice({ isScreen, by, code, onTakeBack }: { isScreen: b
   );
 }
 
+/** Asked for the room's screen code: the host reads it in the menu (Host & screen). */
+export function ScreenCodePrompt({ isScreen, message, onSubmit }: { isScreen: boolean; message: string; onSubmit: (code: string) => void }) {
+  const [value, setValue] = useState("");
+  const form = (
+    <form
+      className="row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (value.trim()) onSubmit(value.trim());
+      }}
+    >
+      <input
+        className="input code-input"
+        placeholder="Code"
+        aria-label="Screen code"
+        value={value}
+        onChange={(e) => setValue(e.target.value.toUpperCase())}
+        maxLength={12}
+        autoFocus
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <button className="btn primary" type="submit" disabled={!value.trim()}>
+        Use this screen
+      </button>
+    </form>
+  );
+  if (!isScreen)
+    return (
+      <div className="embed-note">
+        <span className="muted">{message}</span>
+        {form}
+      </div>
+    );
+  return (
+    <main className="screen-msg">
+      <div className="stack center" style={{ maxWidth: 520 }}>
+        <div className="orb" aria-hidden="true" />
+        <h2>Enter the screen code</h2>
+        <p className="muted">{message} The host finds it in the menu under Host &amp; screen.</p>
+        {form}
+      </div>
+    </main>
+  );
+}
+
 /** What the screen shows while nothing is playing. */
 export function IdleScreen({ big, joinUrl, code, upNext }: { big: boolean; joinUrl: string; code: string; upNext: QueueItem[] }) {
   if (!big) return <div className="embed-idle muted">Songs play here. Queue one below.</div>;

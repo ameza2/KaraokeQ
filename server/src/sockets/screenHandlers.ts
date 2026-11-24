@@ -1,16 +1,26 @@
+import { blockMessage } from "../blocklist.ts";
 import { browserLabel } from "./browser.ts";
 import type { SocketContext } from "./context.ts";
 
 /** The screen page: joining as the room's output, progress and player events. */
-export function screenHandlers({ socket, roomForCode, closeOtherRooms, room, leave }: SocketContext) {
+export function screenHandlers({ socket, roomForCode, closeOtherRooms, room, leave, blocklist, address }: SocketContext) {
   socket.on("screen:progress", (p) => {
     if (socket.data.isScreen && room()?.mode === "screen") room()?.reportProgress(p);
   });
 
-  socket.on("screen:join", async ({ code, deviceId, host }, ack) => {
+  socket.on("screen:join", async ({ code, deviceId, host, screenCode, hostToken }, ack) => {
     const found = roomForCode(code);
     if ("error" in found) return ack({ ok: false, error: found.error });
     const r = found.room;
+    // Taking the screen needs the screen code (or the host's own token) once the room has been used.
+    // Checked before anything is stopped or replaced, and wrong codes count against the device.
+    const locked = blocklist.status("screen", address());
+    if (locked.blocked) return ack({ ok: false, needsScreenCode: false, error: blockMessage(locked) });
+    if (!r.screenAllowed({ screenCode, hostToken })) {
+      if (!screenCode) return ack({ ok: false, needsScreenCode: true, error: "Enter the screen code from the host's menu." });
+      const after = blocklist.fail("screen", address());
+      return ack({ ok: false, needsScreenCode: !after.blocked, error: after.blocked ? blockMessage(after) : "That screen code isn't right." });
+    }
     // One output per room: the newest one wins. A screen joining stops the YouTube cast
     // (the host pairs again to cast), and older screens are told and dropped.
     if (r.mode === "lounge") await r.useScreen("Another screen has taken over. Pair again to cast.");
@@ -31,7 +41,8 @@ export function screenHandlers({ socket, roomForCode, closeOtherRooms, room, lea
     r.screens.add(socket.id);
     // the device showing this screen gets the host's permissions (until another screen takes over)
     r.screenSinger = deviceId ? String(deviceId).slice(0, 64) : null;
-    ack({ ok: true, state: r.state() });
+    r.everHadScreen = true;
+    ack({ ok: true, state: r.state(), screenCode: r.screenCode });
     // Pick up exactly where playback was (timestamp + paused state).
     if (r.mode === "screen") socket.emit("screen:command", r.resumeCommand());
     r.broadcast();

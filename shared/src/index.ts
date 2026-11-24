@@ -162,7 +162,8 @@ export interface Notice {
   message: string;
 }
 
-export type Ack<T = {}> = ({ ok: true } & T) | { ok: false; error: string };
+/** `needsScreenCode`: the screen must send the room's screen code (see `screen:join`). */
+export type Ack<T = {}> = ({ ok: true } & T) | { ok: false; error: string; needsScreenCode?: boolean };
 
 export interface ClientToServer {
   "room:join": (
@@ -190,7 +191,17 @@ export interface ClientToServer {
   /** Host/screen: stop casting and go back to the browser screen. */
   "cast:unpair": () => void;
   "screen:progress": (p: Progress) => void;
-  "screen:join": (p: { code: string; deviceId?: string; host?: string }, ack: (r: Ack<{ state: RoomState }>) => void) => void;
+  /**
+   * Become the room's screen. A brand-new room (no host, no screen yet) lets the first screen in
+   * for free; after that it needs the room's `screenCode` or the host's `hostToken`. The ack
+   * returns the code to the screen, which keeps it for reconnects.
+   */
+  "screen:join": (
+    p: { code: string; deviceId?: string; host?: string; screenCode?: string; hostToken?: string },
+    ack: (r: Ack<{ state: RoomState; screenCode: string }>) => void,
+  ) => void;
+  /** Host or screen: the room's screen code, to type on another screen. */
+  "screen:code": (ack: (r: Ack<{ screenCode: string }>) => void) => void;
   "screen:event": (e: ScreenEvent) => void;
 }
 

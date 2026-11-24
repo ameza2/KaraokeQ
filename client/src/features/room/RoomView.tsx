@@ -55,6 +55,10 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
   const historyItems = useHistory(socket, sheet === "history", state?.historyRev);
   const removeSong = useCallback((itemId: string) => socket.current!.emit("queue:remove", { itemId }), [socket]);
   const moveSong = useCallback((itemId: string, toIndex: number) => socket.current!.emit("queue:move", { itemId, toIndex }), [socket]);
+  const loadScreenCode = useCallback(
+    () => new Promise<string | null>((resolve) => socket.current!.emit("screen:code", (r) => resolve(r.ok ? r.screenCode : null))),
+    [socket],
+  );
 
   if (error)
     return (
@@ -259,6 +263,7 @@ export function RoomView({ code, name, onRename, screenMode = false }: { code: s
           theme={state.settings.theme}
           onTheme={(theme) => s.emit("settings:update", { theme })}
           cast={state.cast}
+          loadScreenCode={loadScreenCode}
           playHere={playHere}
           onTogglePlayHere={() => {
             togglePlayHere(!playHere);

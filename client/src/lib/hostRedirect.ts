@@ -1,5 +1,5 @@
 import { getServerInfo, isRawAddress } from "./joinUrl.ts";
-import { getHostToken, getLastScreenRoom, getName, isPlayerDevice, load, save, setHostToken, setLastScreenRoom, setName, setPlayerDevice, singerId } from "./storage.ts";
+import { getHostToken, getLastScreenRoom, getScreenCode, setScreenCode, getName, isPlayerDevice, load, save, setHostToken, setLastScreenRoom, setName, setPlayerDevice, singerId } from "./storage.ts";
 
 /*
  * YouTube blocks many videos (error 150) when the page is a raw IP address or localhost, but
@@ -38,6 +38,8 @@ export async function moveOffIpAddress(): Promise<boolean> {
     carry.c = room;
     const token = getHostToken(room);
     if (token) carry.t = token;
+    const screenCode = getScreenCode(room);
+    if (screenCode) carry.x = screenCode;
     if (isPlayerDevice(room)) carry.p = "1";
   }
   window.location.replace(`${base}${pathname}${search}#k=${encodeURIComponent(JSON.stringify(carry))}`);
@@ -55,6 +57,7 @@ export function adoptCarriedIdentity() {
     if (c.d) save("karaoke:screenId", c.d);
     if (c.l && !getLastScreenRoom()) setLastScreenRoom(c.l);
     if (c.c && c.t) setHostToken(c.c, c.t);
+    if (c.c && c.x) setScreenCode(c.c, c.x);
     if (c.c && c.p) setPlayerDevice(c.c, true);
   } catch {
     /* ignore a mangled hash */

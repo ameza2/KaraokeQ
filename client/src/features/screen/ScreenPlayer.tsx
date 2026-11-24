@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { QueueItem, ReplacedBy, RoomState, ScreenCommand } from "@karaoke/shared";
 import { qrSrc, useJoinUrl } from "../../lib/joinUrl.ts";
+import { getHostToken, getScreenCode, setScreenCode } from "../../lib/storage.ts";
 import { connect, type KSocket } from "../../lib/socket.ts";
 import Scrubber from "../../components/Scrubber.tsx";
-import { BlockedOverlay, IdleScreen, ReplacedNotice, type BlockInfo } from "./ScreenOverlays.tsx";
+import { BlockedOverlay, IdleScreen, ReplacedNotice, ScreenCodePrompt, type BlockInfo } from "./ScreenOverlays.tsx";
 import { useFullscreen } from "./useFullscreen.ts";
 
 // Minimal typings for the YouTube IFrame Player API.
@@ -92,6 +93,8 @@ export default function ScreenPlayer({
   const startedRef = useRef(started); // sound allowed (the user has clicked)
   const [state, setState] = useState<RoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsCode, setNeedsCode] = useState<string | null>(null); // the server wants the screen code (why, in words)
+  const typedCode = useRef<string | undefined>(undefined); // what was just typed; kept only once the server accepts it
   const [current, setCurrent] = useState<QueueItem | null>(null);
   const [showIntro, setShowIntro] = useState(false);
   const [replaced, setReplaced] = useState(false);
@@ -213,8 +216,12 @@ export default function ScreenPlayer({
     // would silently steal playback back from the screen that took over.
     s.on("connect", () => {
       if (replacedHere) return;
-      s.emit("screen:join", { code, deviceId, host: window.location.hostname }, (r) => {
-        if (!r.ok) return setError(r.error);
+      const screenCode = typedCode.current ?? getScreenCode(code);
+      s.emit("screen:join", { code, deviceId, host: window.location.hostname, screenCode, hostToken: getHostToken(code) }, (r) => {
+        if (!r.ok) return r.needsScreenCode ? setNeedsCode(r.error) : setError(r.error);
+        setNeedsCode(null);
+        setScreenCode(code, r.screenCode); // reconnects and reloads then need no typing
+        typedCode.current = undefined;
         setState(r.state);
       });
     });
@@ -419,6 +426,17 @@ export default function ScreenPlayer({
     controlsRef.current?.onTogglePause();
   };
 
+  if (needsCode !== null)
+    return (
+      <ScreenCodePrompt
+        isScreen={isScreen}
+        message={needsCode}
+        onSubmit={(c) => {
+          typedCode.current = c;
+          setSession((n) => n + 1); // join again with it
+        }}
+      />
+    );
   if (error) return isScreen ? <main className="screen-msg">{error}</main> : <div className="embed-note error">{error}</div>;
 
   // Note: the player stays mounted while replaced; unmounting it would kill the

@@ -48,6 +48,9 @@ export const getName = () => load("karaoke:name") ?? "";
 export const setName = (n: string) => save("karaoke:name", n);
 export const getHostToken = (code: string) => load(`karaoke:host:${code}`) ?? undefined;
 export const setHostToken = (code: string, t: string) => save(`karaoke:host:${code}`, t);
+/** The code that lets this device be a room's screen (the server hands it to the first screen, the host reads it from the menu). */
+export const getScreenCode = (code: string) => load(`karaoke:screencode:${code}`) ?? undefined;
+export const setScreenCode = (code: string, v: string) => save(`karaoke:screencode:${code}`, v);
 /** Rooms started from this phone also play the videos on this phone. */
 export const isPlayerDevice = (code: string) => load(`karaoke:player:${code}`) === "1";
 export const setPlayerDevice = (code: string, on: boolean) => save(`karaoke:player:${code}`, on ? "1" : "0");

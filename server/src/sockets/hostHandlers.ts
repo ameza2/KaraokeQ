@@ -29,5 +29,12 @@ export function hostHandlers({ socket, room, singerId, hostRoom }: SocketContext
     const result = await r.pairCast(String(code ?? ""));
     ack("error" in result ? { ok: false, error: result.error } : { ok: true, name: result.name });
   });
+  // The host (or the room's screen) reads the code to type on another screen.
+  socket.on("screen:code", (ack) => {
+    const r = hostRoom();
+    if (!r) return ack({ ok: false, error: "Only the host can do that." });
+    ack({ ok: true, screenCode: r.screenCode });
+  });
+
   socket.on("cast:unpair", () => void hostRoom()?.useScreen());
 }

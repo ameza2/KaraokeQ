@@ -30,6 +30,9 @@ export interface SocketContext {
    * lock it out for five minutes, ten for good. `error` is ready to show.
    */
   roomForCode(code: string): { room: Room } | { error: string };
+  readonly blocklist: Blocklist;
+  /** This device's address (the lockout is by address). */
+  address(): string;
   /**
    * A device is in one room at a time: close this device's sockets in any other room, so a
    * phone that joins a second room leaves the first. Same room, any number of tabs, is fine.
@@ -65,6 +68,8 @@ export function createContext(io: IO, socket: AppSocket, rooms: RoomRegistry, bl
       const after = blocklist.fail("code", address);
       return { error: after.blocked ? blockMessage(after) : "That room doesn't exist (or has expired)." };
     },
+    blocklist,
+    address: () => socketAddress(socket),
     closeOtherRooms: (code) => {
       if (!ONE_ROOM_PER_DEVICE) return;
       const address = socketAddress(socket);

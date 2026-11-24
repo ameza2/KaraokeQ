@@ -5,7 +5,7 @@ import { PAYLOAD_CHECKS } from "./payloads.ts";
  * Events whose handler answers through an ack callback. Without one the handler would throw
  * on `ack(...)`, so a packet that lacks it is dropped.
  */
-const NEEDS_ACK = new Set(["room:join", "queue:add", "history:get", "history:replay", "host:transfer", "host:claim", "cast:pair", "screen:join"]);
+const NEEDS_ACK = new Set(["room:join", "queue:add", "history:get", "history:replay", "host:transfer", "host:claim", "cast:pair", "screen:join", "screen:code"]);
 
 const isObject = (v: unknown) => typeof v === "object" && v !== null && !Array.isArray(v);
 

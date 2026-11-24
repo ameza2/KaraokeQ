@@ -64,9 +64,14 @@ export async function startServer(env: Record<string, string> = {}): Promise<Tes
   };
 }
 
+/** Host tokens of the rooms made here, so a test screen can act as the host's own device. */
+const hostTokens = new Map<string, string>();
+
 export async function createRoom(url: string, by: "client" | "screen" = "client") {
   const res = await fetch(`${url}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ by }) });
-  return (await res.json()) as { code: string; hostToken?: string };
+  const room = (await res.json()) as { code: string; hostToken?: string };
+  if (room.hostToken) hostTokens.set(room.code, room.hostToken);
+  return room;
 }
 
 export const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -123,9 +128,12 @@ export class Client {
     return r;
   }
 
-  /** Join as the room's screen (the /screen page's role). */
-  async joinScreen(code: string, host = "test.local") {
-    const r = await this.ask<{ state: RoomState }>("screen:join", { code, deviceId: this.singerId, host });
+  /**
+   * Join as the room's screen (the /screen page's role). Unless a test says otherwise it shows the
+   * room's host token, like the host's own device; pass `{ screenCode }` or `{}` to test the code rules.
+   */
+  async joinScreen(code: string, host = "test.local", creds: { screenCode?: string; hostToken?: string } = { hostToken: hostTokens.get(code) }) {
+    const r = await this.ask<{ state: RoomState; screenCode: string }>("screen:join", { code, deviceId: this.singerId, host, ...creds });
     if (r.ok) this.state = r.state;
     return r;
   }

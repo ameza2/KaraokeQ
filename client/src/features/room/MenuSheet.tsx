@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { THEMES, THEME_LABELS, type RoomState, type ThemeName } from "@karaoke/shared";
 import { type SheetName } from "./RoomView.tsx";
 import { Sheet } from "../../components/ui/Sheet.tsx";
@@ -9,6 +10,24 @@ function MenuSection({ title, children }: { title: string; children: React.React
     <div className="menu-section" role="group" aria-label={title}>
       <div className="menu-section-title">{title}</div>
       {children}
+    </div>
+  );
+}
+
+/** The room's screen code, for typing on another screen. Loaded from the server when the menu opens. */
+function ScreenCodeRow({ load }: { load: () => Promise<string | null> }) {
+  const [value, setValue] = useState<string | null>(null);
+  useEffect(() => {
+    void load().then(setValue);
+  }, [load]);
+  if (!value) return null;
+  return (
+    <div className="menu-item" role="menuitem">
+      <span className="menu-icon">🔑</span>
+      <span className="menu-text">
+        Screen code: <b>{value}</b>
+        <span className="muted small">Type it on another screen to use that one</span>
+      </span>
     </div>
   );
 }
@@ -26,6 +45,7 @@ export function MenuSheet({
   theme,
   onTheme,
   cast,
+  loadScreenCode,
   playHere,
   onTogglePlayHere,
   onOpen,
@@ -44,6 +64,7 @@ export function MenuSheet({
   theme: ThemeName;
   onTheme: (t: ThemeName) => void;
   cast: RoomState["cast"];
+  loadScreenCode: () => Promise<string | null>;
   playHere: boolean;
   onTogglePlayHere: () => void;
   onOpen: (s: SheetName) => void;
@@ -124,6 +145,7 @@ export function MenuSheet({
               </span>
             </span>
           </button>
+          <ScreenCodeRow load={loadScreenCode} />
           {!screenMode && (
             <button className="menu-item" role="menuitem" onClick={onTogglePlayHere}>
               <span className="menu-icon">{playHere ? "■" : "▶"}</span>

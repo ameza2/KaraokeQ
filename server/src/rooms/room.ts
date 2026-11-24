@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Server } from "socket.io";
 import type { ClientToServer, Notice, OutputMode, Progress, QueueItem, ReplacedBy, RoomSettings, ScreenCommand, RoomState, ServerToClient, VideoResult } from "@karaoke/shared";
 import type { PlaybackOutput } from "../playback/output.ts";
@@ -22,7 +22,26 @@ interface SingerRecord {
   screen: boolean;
 }
 
+/** Letters and digits without 0/O/1/I, for room codes and screen codes. */
+export const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+const normalizeCode = (v: string | undefined) => v?.replace(/[\s-]/g, "").toUpperCase();
+const sameSecret = (given: string | undefined, secret: string) => {
+  if (!given) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
+
 export class Room {
+  /**
+   * What another device types to become this room's screen. Never sent in `room:state`: only the
+   * host, the admin and a screen that is already in see it.
+   */
+  screenCode = Array.from(randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+  /** A screen has been in this room. With a host, it makes the room "used": screens then need the code. */
+  everHadScreen = false;
+
   /** Proof of host for reconnects. Rotated on hand-over so the old host's copy stops working. */
   hostToken = randomBytes(16).toString("hex");
   /** The host is a person (singerId), not a socket: every device they use gets host controls. */
@@ -66,6 +85,15 @@ export class Room {
     if (!me || me.screen || me.sockets.size === 0 || singerId === this.hostId || !this.hostClaimable) return false;
     this.say(`host claimed by ${me.name}: the host was away for ${Math.round((Date.now() - (this.hostAwaySince ?? Date.now())) / 60_000)} min`);
     return this.assignHost(singerId, singerId);
+  }
+
+  /**
+   * May this device become the room's screen? Free while the room is brand new (no host and no
+   * screen yet). After that: the screen code, or the host's own token (their device, "Play on this device").
+   */
+  screenAllowed(creds: { screenCode?: string; hostToken?: string }): boolean {
+    if (!this.hostId && !this.everHadScreen) return true;
+    return sameSecret(creds.hostToken, this.hostToken) || sameSecret(normalizeCode(creds.screenCode), this.screenCode);
   }
 
   isHost(singerId: string | undefined) {

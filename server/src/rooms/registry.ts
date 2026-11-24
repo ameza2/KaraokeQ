@@ -2,11 +2,9 @@ import { randomBytes } from "node:crypto";
 import type { Server } from "socket.io";
 import type { ClientToServer, ServerToClient } from "@karaoke/shared";
 import type { PlayLog } from "../playLog.ts";
-import { Room } from "./room.ts";
+import { CODE_ALPHABET, Room } from "./room.ts";
 
 type IO = Server<ClientToServer, ServerToClient>;
-
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I
 
 export class RoomRegistry {
   /** Live rooms allowed at once (each one holds memory and a play-log file). */

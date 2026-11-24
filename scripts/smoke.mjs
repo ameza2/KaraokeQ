@@ -193,6 +193,34 @@ try {
   check("screen landing renders", (await sp.evaluate(() => document.body.textContent)).length > 20);
   await sp.close();
 
+  // screen code: the host reads it in the menu, a second device has to type it to become the screen
+  await page.click("button[aria-label='Menu']");
+  await page.waitForFunction(() => /Screen code:\s*[A-Z2-9]{6}/.test(document.body.textContent), { timeout: 5000 }).catch(() => {}); // loaded from the server when the menu opens
+  const menuCode = await page.evaluate(() => /Screen code:\s*([A-Z2-9]{6})/.exec(document.body.textContent)?.[1] ?? null);
+  check("host menu shows the screen code", !!menuCode, menuCode ?? "");
+  await page.keyboard.press("Escape");
+  const other = await browser.createBrowserContext(); // its own storage: a different device
+  const tv = await other.newPage();
+  await tv.setViewport({ width: 1280, height: 720 });
+  tv.on("pageerror", (e) => errors.push("tv pageerror: " + e.message));
+  await tv.goto(`${BASE}/r/${code}/screen`, { waitUntil: "networkidle0" });
+  const needs = await tv.waitForSelector("input[aria-label='Screen code']", { timeout: 8000 }).then(() => true, () => false);
+  await shot(tv, "08b-screen-code-prompt");
+  check("a second screen is asked for the code", needs);
+  if (needs && menuCode) {
+    await tv.type("input[aria-label='Screen code']", "AAAAAA");
+    await clickText(tv, "button", "Use this screen");
+    await tv.waitForFunction(() => document.body.textContent.includes("isn't right"), { timeout: 8000 }).catch(() => {});
+    check("a wrong code is refused", await tv.evaluate(() => document.body.textContent.includes("isn't right")));
+    await tv.$eval("input[aria-label='Screen code']", (el) => (el.value = ""));
+    await tv.type("input[aria-label='Screen code']", menuCode);
+    await clickText(tv, "button", "Use this screen");
+    await tv.waitForFunction(() => !document.querySelector("input[aria-label='Screen code']"), { timeout: 8000 }).catch(() => {});
+    check("the right code makes it the screen", !(await tv.$("input[aria-label='Screen code']")));
+  }
+  await other.close();
+  await page.bringToFront();
+
   // admin
   const ap = await browser.newPage();
   await ap.setViewport({ width: 1100, height: 800 });

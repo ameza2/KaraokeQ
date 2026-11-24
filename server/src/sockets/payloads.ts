@@ -31,7 +31,8 @@ export const PAYLOAD_CHECKS: Record<string, (p: Obj) => boolean> = {
     optional(p.openControls, (x) => typeof x === "boolean") && optional(p.fairQueue, (x) => typeof x === "boolean") && optional(p.theme, (x) => str(x, 40)),
   "cast:pair": (p) => str(p.code, 64),
   "screen:progress": (p) => str(p.itemId, 100) && num(p.time) && num(p.duration),
-  "screen:join": (p) => str(p.code, 16) && optional(p.deviceId, (x) => str(x, 200)) && optional(p.host, (x) => str(x, 300)),
+  "screen:join": (p) =>
+    str(p.code, 16) && optional(p.deviceId, (x) => str(x, 200)) && optional(p.host, (x) => str(x, 300)) && optional(p.screenCode, (x) => str(x, 40)) && optional(p.hostToken, (x) => str(x, 200)),
   "screen:event": (p) =>
     typeof p.type === "string" && SCREEN_EVENTS.has(p.type) && str(p.itemId, 100) && optional(p.errorCode, num) && optional(p.played, (x) => typeof x === "boolean"),
 };
