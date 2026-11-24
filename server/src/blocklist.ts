@@ -11,8 +11,9 @@ import { DeviceRegistry } from "./devices.ts";
  *
  * Permanent bans are kept on the device's own record (`devices.ts`, `<data>/devices/<address>.json`).
  * To let a device back in, set its `status` to "ok" there: the change is picked up within a few
- * seconds, no restart needed. Temporary bans and the failure counts are in memory only; the
- * record keeps a history of them.
+ * seconds, no restart needed. A timeout and the run of wrong guesses behind it are in the same
+ * record (`lockouts`), so they survive a restart and can be edited: set `until` to a past time,
+ * or delete the scope's entry, to end a timeout.
  */
 export interface BlockOptions {
   /** Failures in a row that start a temporary ban. */
@@ -37,14 +38,6 @@ interface Entry {
   scope: string;
 }
 
-interface Counter {
-  fails: number;
-  until: number;
-  last: number;
-}
-
-const MAX_COUNTERS = 10_000;
-
 /** What to tell a device that is locked out. */
 export function blockMessage(s: BlockStatus): string {
   if (!s.blocked) return "";
@@ -58,7 +51,6 @@ export const deviceKey = (address: string | undefined) => (address ?? "?").repla
 
 export class Blocklist {
   readonly devices: DeviceRegistry;
-  private counters = new Map<string, Counter>();
   private readonly tempAfter: number;
   private readonly permanentAfter: number;
   private readonly tempMs: number;
@@ -78,8 +70,7 @@ export class Blocklist {
   status(scope: string, address: string | undefined): BlockStatus {
     const key = deviceKey(address);
     if (this.devices.isBlocked(key)) return { blocked: true, permanent: true };
-    const until = this.counters.get(`${scope}|${key}`)?.until ?? 0;
-    const left = until - this.now();
+    const left = (this.devices.lockout(key, scope)?.until ?? 0) - this.now();
     return left > 0 ? { blocked: true, permanent: false, retryAfterMs: left } : { blocked: false };
   }
 
@@ -94,30 +85,29 @@ export class Blocklist {
     const before = this.status(scope, address);
     if (before.blocked) return before;
 
-    const id = `${scope}|${key}`;
-    const c = this.counters.get(id) ?? { fails: 0, until: 0, last: 0 };
-    if (this.now() - c.last > this.decayMs) c.fails = 0; // an old run is forgotten, so a typo last week counts for nothing
-    c.fails += 1;
-    c.last = this.now();
+    const t = this.now();
+    const run = this.devices.lockout(key, scope);
+    // an old run is forgotten, so a typo last week counts for nothing
+    const fails = (run && t - run.last <= this.decayMs ? run.fails : 0) + 1;
     this.devices.recordFailure(key, scope);
-    this.counters.delete(id); // re-insert so the oldest entries come first
-    this.counters.set(id, c);
-    if (this.counters.size > MAX_COUNTERS) this.counters.delete(this.counters.keys().next().value as string);
 
-    if (c.fails >= this.permanentAfter) {
-      this.counters.delete(id);
+    if (fails >= this.permanentAfter) {
+      this.devices.setLockout(key, scope, undefined);
       this.ban(key, scope);
-    } else if (c.fails >= this.tempAfter) {
-      c.until = this.now() + this.tempMs;
-      this.devices.recordTimeout(key, scope, c.until);
-      console.warn(`blocklist: ${key} is blocked for ${Math.round(this.tempMs / 60e3)} min (${c.fails} wrong ${scope} attempts in a row)`);
+    } else if (fails >= this.tempAfter) {
+      const until = t + this.tempMs;
+      this.devices.setLockout(key, scope, { fails, until, last: t });
+      this.devices.recordTimeout(key, scope, until);
+      console.warn(`blocklist: ${key} is blocked for ${Math.round(this.tempMs / 60e3)} min (${fails} wrong ${scope} attempts in a row)`);
+    } else {
+      this.devices.setLockout(key, scope, { fails, until: 0, last: t });
     }
     return this.status(scope, address);
   }
 
   /** A correct guess: the run of failures starts over. */
   succeed(scope: string, address: string | undefined) {
-    this.counters.delete(`${scope}|${deviceKey(address)}`);
+    this.devices.setLockout(deviceKey(address), scope, undefined);
   }
 
   /** Permanently blocked devices, for the admin and tests. */
@@ -127,14 +117,7 @@ export class Blocklist {
 
   /** Devices in a temporary ban right now, with the time left (for the admin page). */
   temporary(): { key: string; scope: string; fails: number; retryAfterMs: number }[] {
-    const t = this.now();
-    const out: { key: string; scope: string; fails: number; retryAfterMs: number }[] = [];
-    for (const [id, c] of this.counters) {
-      if (c.until <= t) continue;
-      const [scope, key] = id.split("|") as [string, string];
-      out.push({ key, scope, fails: c.fails, retryAfterMs: c.until - t });
-    }
-    return out;
+    return this.devices.timeouts(this.now()).map((t) => ({ key: t.address, scope: t.scope, fails: t.fails, retryAfterMs: t.retryAfterMs }));
   }
 
   /** The admin blocks a device for good. False when it already was. */
@@ -151,13 +134,7 @@ export class Blocklist {
    */
   unblock(address: string): boolean {
     const key = deviceKey(address);
-    let changed = this.devices.unblock(key);
-    for (const id of [...this.counters.keys()]) {
-      if (id.endsWith(`|${key}`)) {
-        this.counters.delete(id);
-        changed = true;
-      }
-    }
+    const changed = this.devices.unblock(key); // also forgets the runs of wrong guesses and ends timeouts
     if (changed) console.warn(`blocklist: ${key} was unblocked by the admin`);
     return changed;
   }

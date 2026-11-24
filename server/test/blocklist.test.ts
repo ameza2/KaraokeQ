@@ -98,6 +98,39 @@ describe("Blocklist", () => {
     assert.equal(list.status("login", "10.0.0.12").blocked, true);
   });
 
+  it("keeps a timeout across a restart, with the run of wrong guesses behind it", async () => {
+    const { dir: d, list } = make("timeout-restart");
+    for (let i = 0; i < 5; i++) list.fail("code", "10.0.0.20");
+    now += 60e3;
+    await new Promise((r) => setTimeout(r, 50));
+    const again = new Blocklist(d, { now: clock, recheckMs: 0 });
+    const status = again.status("code", "10.0.0.20");
+    assert.deepEqual(status, { blocked: true, permanent: false, retryAfterMs: 4 * 60e3 });
+    assert.equal(again.temporary()[0]?.fails, 5);
+    assert.equal(again.fail("code", "10.0.0.20").blocked, true, "wrong guesses made during the timeout are ignored");
+    now += 4 * 60e3 + 1;
+    assert.equal(again.fail("code", "10.0.0.20").blocked, true, "the run of five survived too: the sixth miss bans again");
+  });
+
+  it("ends a timeout when its entry is edited out of the device file, and starts one from an edit", async () => {
+    const { dir: d, list } = make("timeout-edit");
+    for (let i = 0; i < 5; i++) list.fail("login", "10.0.0.21");
+    await new Promise((r) => setTimeout(r, 50));
+    const file = path.join(d, "devices", "10.0.0.21.json");
+    const record = JSON.parse(readFileSync(file, "utf8")) as { lockouts: Record<string, { fails: number; until: string | null }> };
+    assert.equal(list.status("login", "10.0.0.21").blocked, true);
+
+    writeFileSync(file, JSON.stringify({ ...record, lockouts: {} }, null, 2));
+    assert.equal(list.status("login", "10.0.0.21").blocked, false, "deleting the scope's entry lifts the timeout");
+    for (let i = 0; i < 4; i++) assert.equal(list.fail("login", "10.0.0.21").blocked, false, "and the count starts again");
+
+    await list.devices.flush(); // an edit made while the server still has an unsaved change to the same device would lose to it
+    writeFileSync(file, JSON.stringify({ ...record, lockouts: { login: { fails: 5, until: new Date(now + 600e3).toISOString(), last: new Date(now).toISOString() } } }, null, 2));
+    assert.deepEqual(list.status("login", "10.0.0.21"), { blocked: true, permanent: false, retryAfterMs: 600e3 }, "a future `until` written by hand bans the device");
+    writeFileSync(file, JSON.stringify({ ...record, lockouts: { login: { fails: 5, until: new Date(now - 1000).toISOString(), last: new Date(now).toISOString() } } }, null, 2));
+    assert.equal(list.status("login", "10.0.0.21").blocked, false, "a past `until` lifts it");
+  });
+
   it("forgets a run of failures after an hour without a new one", () => {
     const { list } = make("decay");
     for (let i = 0; i < 4; i++) list.fail("code", "10.0.0.13");

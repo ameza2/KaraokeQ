@@ -51,6 +51,7 @@ export function parseDevice(raw: unknown): DeviceRecord | null {
     note: str(r.note),
     failures,
     lastFailureAt: typeof r.lastFailureAt === "string" ? r.lastFailureAt : null,
+    lockouts: parseLockouts(r.lockouts),
     bans: list(r.bans).map((x) => ({
       kind: x.kind === "permanent" ? "permanent" : "temporary",
       scope: str(x.scope),
@@ -69,6 +70,17 @@ export function parseDevice(raw: unknown): DeviceRecord | null {
     })),
     userAgents: list(r.userAgents).map((x) => ({ agent: str(x.agent), lastSeen: str(x.lastSeen) })),
   };
+}
+
+function parseLockouts(raw: unknown): DeviceRecord["lockouts"] {
+  const out: DeviceRecord["lockouts"] = {};
+  if (typeof raw !== "object" || raw === null) return out;
+  for (const [scope, v] of Object.entries(raw)) {
+    if (typeof v !== "object" || v === null) continue;
+    const x = v as Record<string, unknown>;
+    out[scope] = { fails: num(x.fails), until: typeof x.until === "string" ? x.until : null, last: str(x.last) };
+  }
+  return out;
 }
 
 interface Live {
@@ -218,6 +230,41 @@ export class DeviceRegistry {
     this.touch(address);
   }
 
+  // ----- timeouts -----
+
+  /** The run of wrong guesses for `scope`, as times in ms. */
+  lockout(address: string, scope: string): { fails: number; until: number; last: number } | undefined {
+    const l = this.get(address)?.lockouts[scope];
+    if (!l) return undefined;
+    return { fails: l.fails, until: l.until ? Date.parse(l.until) || 0 : 0, last: Date.parse(l.last) || 0 };
+  }
+
+  /** Save the run (or forget it with `undefined`). A timeout that starts is saved at once. */
+  setLockout(address: string, scope: string, run: { fails: number; until: number; last: number } | undefined) {
+    if (!run) {
+      if (!this.records.get(address)?.lockouts[scope]) return;
+      delete this.records.get(address)!.lockouts[scope];
+      this.touch(address);
+      return;
+    }
+    const r = this.ensure(address);
+    r.lockouts[scope] = { fails: run.fails, until: run.until ? new Date(run.until).toISOString() : null, last: new Date(run.last).toISOString() };
+    this.touch(address, run.until > 0);
+  }
+
+  /** Timeouts running now, for the admin page. */
+  timeouts(nowMs: number): { address: string; scope: string; fails: number; retryAfterMs: number }[] {
+    this.refresh();
+    const out: { address: string; scope: string; fails: number; retryAfterMs: number }[] = [];
+    for (const r of this.records.values()) {
+      for (const [scope, l] of Object.entries(r.lockouts)) {
+        const until = l.until ? Date.parse(l.until) || 0 : 0;
+        if (until > nowMs) out.push({ address: r.address, scope, fails: l.fails, retryAfterMs: until - nowMs });
+      }
+    }
+    return out;
+  }
+
   // ----- blocking -----
 
   /** Block for good. False when it already was. */
@@ -241,6 +288,10 @@ export class DeviceRegistry {
     if (!r) return false;
     const at = this.iso();
     let changed = false;
+    if (Object.keys(r.lockouts).length > 0) {
+      r.lockouts = {};
+      changed = true;
+    }
     if (r.status === "blocked") {
       r.status = "ok";
       r.blocked = null;
@@ -299,7 +350,7 @@ export class DeviceRegistry {
     let r = this.records.get(address);
     if (!r) {
       const at = this.iso();
-      r = { address, firstSeen: at, lastSeen: at, connections: 0, status: "ok", blocked: null, note: "", failures: {}, lastFailureAt: null, bans: [], names: [], rooms: [], userAgents: [] };
+      r = { address, firstSeen: at, lastSeen: at, connections: 0, status: "ok", blocked: null, note: "", failures: {}, lastFailureAt: null, lockouts: {}, bans: [], names: [], rooms: [], userAgents: [] };
       this.records.set(address, r);
     }
     return r;

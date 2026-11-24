@@ -272,6 +272,11 @@ export interface DeviceRecord {
   /** Wrong guesses per scope, all time. */
   failures: Record<string, number>;
   lastFailureAt: string | null;
+  /**
+   * Runs of wrong guesses in a row, per scope, and the timeout they led to. This is what the server
+   * enforces: set `until` to a past time, or delete the scope's entry, to end a timeout by hand.
+   */
+  lockouts: Record<string, { fails: number; until: string | null; last: string }>;
   bans: DeviceBan[];
   /** Names it has joined with (the person can change; the device is the address). */
   names: { name: string; singerId: string; lastSeen: string }[];

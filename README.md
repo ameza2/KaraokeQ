@@ -184,7 +184,7 @@ Open `http://<shared-name>:5173/admin` (or the **Admin** link at the bottom of t
 - A device is its network address. The server keeps one file per device in `data/devices/` (first and last time seen, connections, names, rooms, browsers, wrong guesses, bans and your note), and never deletes them.
 - **Connected now** lists who is online and in which room, each with a **Block** button. **Every device seen** is searchable by address, name, room code or note.
 - **Blocked until you lift it** and **Blocked for a few minutes** show why and since when, with **Unblock** and **End timeout**. After 5 wrong guesses in a row (admin password, room code, screen code) a device is blocked for 5 minutes; after 10 it stays blocked until you unblock it.
-- **Block a device** takes an IP address and an optional note. You can also unblock by editing the device's file (set `status` to `"ok"`).
+- **Block a device** takes an IP address and an optional note. You can also edit a device's file: set `status` to `"ok"` to unblock a device that is blocked for good, and delete its entry under `lockouts` (or set that entry's `until` to a past time) to end a 5-minute timeout. Timeouts survive a restart.
 
 **Appearance tab**
 - Colour presets: **Orange** (default), **Blue**, **White** and **Green**. White is a neutral monochrome look; the interface stays dark.
