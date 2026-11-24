@@ -6,11 +6,11 @@ import type { AdminRoomReport, AdminSession, AdminStats, MetricHistory } from "@
 import type { Logger } from "../logger.ts";
 import type { PlayLog } from "../playLog.ts";
 import type { Room, RoomRegistry } from "../rooms/index.ts";
-import { rateLimiter } from "../search.ts";
 import { isTheme, type SiteSettings } from "../siteSettings.ts";
 import { castLog } from "../playback/lounge.ts";
 import { AdminAuth } from "./credentials.ts";
 import type { Metrics } from "../metrics.ts";
+import { blockMessage, type Blocklist } from "../blocklist.ts";
 
 /**
  * Everything under /api/admin. Every route except login/session/logout needs a
@@ -38,10 +38,11 @@ export interface AdminDeps {
   settings: SiteSettings;
   logger: Logger;
   metrics: Metrics;
+  blocklist: Blocklist;
   dataDir: string;
 }
 
-export function adminRouter({ io, rooms, playLog, auth, settings, logger, metrics, dataDir }: AdminDeps): Router {
+export function adminRouter({ io, rooms, playLog, auth, settings, logger, metrics, blocklist, dataDir }: AdminDeps): Router {
   const router = Router();
   const sessions = new Map<string, Session>();
   const startedAt = Date.now();
@@ -72,9 +73,11 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
 
   // ----- sign-in -----
 
-  const loginLimit = rateLimiter(8, 60e3); // per address: slows password guessing
+  // Wrong passwords are counted by the blocklist: 5 in a row ban the device for 5 minutes, 10 for good.
   router.post("/login", async (req, res) => {
-    if (!loginLimit(who(req))) return void res.status(429).json({ error: "Too many attempts. Wait a minute and try again." });
+    // A device that keeps guessing is locked out before any password work is done.
+    const locked = blocklist.status("login", req.ip);
+    if (locked.blocked) return void res.status(429).json({ error: blockMessage(locked) });
     const username = String(req.body?.username ?? "").slice(0, 100);
     const password = String(req.body?.password ?? "").slice(0, 200);
     let result: Awaited<ReturnType<AdminAuth["verify"]>>;
@@ -86,8 +89,10 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     }
     if (!result) {
       console.warn(`admin: failed sign-in from ${who(req)}`);
-      return void res.status(401).json({ error: "Wrong username or password." });
+      const after = blocklist.fail("login", req.ip);
+      return void res.status(after.blocked ? 429 : 401).json({ error: after.blocked ? blockMessage(after) : "Wrong username or password." });
     }
+    blocklist.succeed("login", req.ip);
     const token = randomBytes(32).toString("hex");
     sessions.set(token, { ...result, expires: Date.now() + SESSION_MS });
     setCookie(res, token, SESSION_MS / 1000);
@@ -122,7 +127,14 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     const s = res.locals.session as Session;
     const current = String(req.body?.current ?? "");
     const next = String(req.body?.next ?? "");
-    if (!(await auth.verify(s.username, current))) return void res.status(400).json({ error: "The current password is wrong." });
+    // Guessing the current password from a stolen session counts like a wrong sign-in.
+    const locked = blocklist.status("login", req.ip);
+    if (locked.blocked) return void res.status(429).json({ error: blockMessage(locked) });
+    if (!(await auth.verify(s.username, current))) {
+      const after = blocklist.fail("login", req.ip);
+      return void res.status(after.blocked ? 429 : 400).json({ error: after.blocked ? blockMessage(after) : "The current password is wrong." });
+    }
+    blocklist.succeed("login", req.ip);
     const problem = AdminAuth.passwordProblem(next);
     if (problem) return void res.status(400).json({ error: problem });
     if (next === current) return void res.status(400).json({ error: "The new password must be different." });

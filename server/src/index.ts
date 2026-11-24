@@ -11,6 +11,7 @@ import { SiteSettings } from "./siteSettings.ts";
 import { AdminAuth, FileCredentialStore } from "./admin/credentials.ts";
 import { adminRouter } from "./admin/routes.ts";
 import { Metrics } from "./metrics.ts";
+import { Blocklist } from "./blocklist.ts";
 import { castLog } from "./playback/lounge.ts";
 import { publicRoutes } from "./http/publicRoutes.ts";
 import { installFakeYoutube } from "./searchFake.ts";
@@ -41,6 +42,7 @@ const rooms = new RoomRegistry(io, playLog);
 const siteSettings = new SiteSettings(dataDir());
 castLog.verbose = siteSettings.verboseCastLog;
 const credentials = new FileCredentialStore(dataDir());
+const blocklist = new Blocklist(dataDir(), { tempMs: Number(process.env.KARAOKE_BLOCK_TEMP_MS) || undefined }); // the env var is for tests
 
 // Performance history for the admin debug page (one sample a minute, 7 days).
 const metrics = new Metrics(dataDir(), () => {
@@ -58,7 +60,7 @@ startShareHostWatch();
 if (process.env.KARAOKE_FAKE_YOUTUBE === "1") installFakeYoutube(app); // tests and the stress test only
 publicRoutes(app, { rooms, playLog });
 cspReportRoute(app);
-app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, dataDir: dataDir() }));
+app.use("/api/admin", noStore, adminRouter({ io, rooms, playLog, auth: new AdminAuth(credentials), settings: siteSettings, logger, metrics, blocklist, dataDir: dataDir() }));
 staticClient(app); // keep last: the /api 404 catch-all and the built client
 app.use(errorHandler); // after every route
 

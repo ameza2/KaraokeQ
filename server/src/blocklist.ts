@@ -41,6 +41,14 @@ interface Counter {
 
 const MAX_COUNTERS = 10_000;
 
+/** What to tell a device that is locked out. */
+export function blockMessage(s: BlockStatus): string {
+  if (!s.blocked) return "";
+  if (s.permanent) return "This device is blocked. Ask whoever runs the server to unblock it.";
+  const min = Math.max(1, Math.ceil(s.retryAfterMs / 60e3));
+  return `Too many wrong attempts. Try again in ${min} minute${min === 1 ? "" : "s"}.`;
+}
+
 /** One address, whichever way the socket spells it ("::ffff:1.2.3.4" is 1.2.3.4). */
 export const deviceKey = (address: string | undefined) => (address ?? "?").replace(/^::ffff:/i, "").toLowerCase();
 
