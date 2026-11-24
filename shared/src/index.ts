@@ -251,6 +251,8 @@ export interface AdminRoomReport {
   hostId: string | null;
   hostName: string | null;
   screenConnected: boolean;
+  /** What another device types to become this room's screen (admin only: never in `room:state`). */
+  screenCode: string;
   /** Hostname the screen page is open at, when one is connected. */
   screenHost: string | null;
   /** The YouTube cast, when one is paired. */

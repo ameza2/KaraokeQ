@@ -167,6 +167,7 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
       hostId: r.hostId,
       hostName: r.singers.get(r.hostId ?? "")?.name ?? null,
       screenConnected: r.screens.size > 0,
+      screenCode: r.screenCode,
       screenHost: (screenSocket?.data as { host?: string } | undefined)?.host ?? null,
       cast: state.cast,
       paused: r.paused,
@@ -219,6 +220,21 @@ export function adminRouter({ io, rooms, playLog, auth, settings, logger, metric
     if (!room) return void res.status(404).json({ error: "No such room." });
     if (!room.lounge) return void res.status(400).json({ error: "No YouTube cast is paired." });
     await room.useScreen("The admin stopped the YouTube cast.");
+    res.json({ room: report(room) });
+  });
+
+  // Screen: a new code for screens that join later, or hang up the screen that is playing now.
+  router.post("/rooms/:code/screen-code", (req, res) => {
+    const room = rooms.get(req.params.code);
+    if (!room) return void res.status(404).json({ error: "No such room." });
+    room.resetScreenCode();
+    res.json({ room: report(room) });
+  });
+
+  router.delete("/rooms/:code/screen", (req, res) => {
+    const room = rooms.get(req.params.code);
+    if (!room) return void res.status(404).json({ error: "No such room." });
+    if (room.stopScreens("The admin stopped this screen.") === 0) return void res.status(400).json({ error: "No screen is connected." });
     res.json({ room: report(room) });
   });
 

@@ -25,6 +25,7 @@ interface SingerRecord {
 /** Letters and digits without 0/O/1/I, for room codes and screen codes. */
 export const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+const newScreenCode = () => Array.from(randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 const normalizeCode = (v: string | undefined) => v?.replace(/[\s-]/g, "").toUpperCase();
 const sameSecret = (given: string | undefined, secret: string) => {
   if (!given) return false;
@@ -38,7 +39,7 @@ export class Room {
    * What another device types to become this room's screen. Never sent in `room:state`: only the
    * host, the admin and a screen that is already in see it.
    */
-  screenCode = Array.from(randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+  screenCode = newScreenCode();
   /** A screen has been in this room. With a host, it makes the room "used": screens then need the code. */
   everHadScreen = false;
 
@@ -291,6 +292,30 @@ export class Room {
       old?.disconnect(); // the client also hangs up on "screen:replaced" and won't rejoin
       this.disconnect(id); // freezes the playback clock at the old screen's position
     }
+  }
+
+  /** A new screen code. Only screens that join from now on need it: the current screen keeps playing. */
+  resetScreenCode(): string {
+    this.screenCode = newScreenCode();
+    this.say("screen code reset by the admin");
+    return this.screenCode;
+  }
+
+  /** Hang up every browser screen (the admin's stop button). They are told why and don't rejoin on their own. */
+  stopScreens(message: string): number {
+    const ids = [...this.screens];
+    for (const id of ids) {
+      const socket = this.io.sockets.sockets.get(id);
+      socket?.emit("room:closed", { message });
+      socket?.leave(`screen:${this.code}`);
+      socket?.disconnect();
+      this.disconnect(id); // freezes the playback clock where the screen left it
+    }
+    if (ids.length > 0) {
+      this.say(`${ids.length} screen${ids.length === 1 ? "" : "s"} stopped by the admin`);
+      this.broadcast();
+    }
+    return ids.length;
   }
 
   disconnect(socketId: string) {

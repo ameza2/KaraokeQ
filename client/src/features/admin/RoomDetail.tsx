@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { THEMES, THEME_LABELS, type AdminRoomReport, type RoomSettings, type QueueItem, type ThemeName } from "@karaoke/shared";
 import { api, type Run } from "../../lib/adminApi.ts";
 import { useLanHost } from "../../lib/joinUrl.ts";
+import { setScreenCode } from "../../lib/storage.ts";
 import { duration, clock, dateTime } from "./format.ts";
 
 export function RoomDetail({ room, now, run, onChanged, onDelete }: { room: AdminRoomReport; now: number; run: Run; onChanged: () => Promise<void>; onDelete: () => void }) {
@@ -34,6 +35,35 @@ export function RoomDetail({ room, now, run, onChanged, onDelete }: { room: Admi
         <Fact label="Screen" value={room.screenConnected ? `Connected${room.screenHost ? ` (${room.screenHost})` : ""}` : "Not connected"} />
         <Fact label="YouTube cast" value={room.cast ? `${room.cast.name} (${room.cast.connected ? "connected" : "reconnecting"})` : "Not paired"} />
       </dl>
+
+      <h3>Screen</h3>
+      <div className="admin-actions">
+        <span className="admin-grow">
+          Screen code <code>{room.screenCode}</code>
+          <span className="muted small"> · {room.screenConnected ? "a screen is playing" : "no screen connected"}</span>
+        </span>
+        <button
+          className="btn small"
+          title="Only screens that join from now on need the new code"
+          onClick={async () => {
+            await run(() => api("POST", `/rooms/${room.code}/screen-code`), `${room.code}: new screen code`);
+            await onChanged();
+          }}
+        >
+          Reset code
+        </button>
+        {room.screenConnected && (
+          <button
+            className="btn small danger"
+            onClick={async () => {
+              await run(() => api("DELETE", `/rooms/${room.code}/screen`), `${room.code}: screen stopped`);
+              await onChanged();
+            }}
+          >
+            Stop screen
+          </button>
+        )}
+      </div>
 
       <h3>YouTube cast</h3>
       {room.cast ? (
@@ -185,7 +215,7 @@ export function RoomDetail({ room, now, run, onChanged, onDelete }: { room: Admi
         <a className="btn small" href={base} target="_blank" rel="noreferrer">
           Open room
         </a>
-        <a className="btn small" href={`${base}/screen`} target="_blank" rel="noreferrer">
+        <a className="btn small" href={`${base}/screen`} target="_blank" rel="noreferrer" onClick={() => setScreenCode(room.code, room.screenCode)}>
           Open as screen
         </a>
         <button className="btn small danger" onClick={onDelete}>
